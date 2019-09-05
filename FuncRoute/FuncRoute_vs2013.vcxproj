@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\FuncRoute.cpp" />
+    <ClCompile Include="src\Help.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\os\linux\LogFile_linux.cpp" />
     <ClCompile Include="src\os\linux\shared_library_linux.cpp" />
@@ -36,6 +37,10 @@
     <ClInclude Include="src\os\share_library.h" />
     <ClInclude Include="src\os\thread.h" />
     <ClInclude Include="src\os\timer.h" />
+    <ClInclude Include="src\version.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\Help.h" />
     <ClInclude Include="src\version.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
