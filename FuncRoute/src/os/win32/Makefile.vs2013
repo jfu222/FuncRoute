@@ -1,0 +1,71 @@
+# Makefile for project VideoImageEncoderDecoder; vs2013 x64|Win32;
+# "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall.bat" amd64|x86
+# fuj@1000video.com.cn && 2018.07.06
+
+PLATFORM = x64
+
+!IFNDEF DEBUG
+DEBUG = 0
+!ENDIF
+
+MAKEFILE_NAME = Makefile.vs2013
+MAKEFILE_DIR = $(MAKEDIR)
+
+#-----------------------------------------
+TEMP_DIR = .
+
+#----------------------------------
+INCLUDE = \
+/I"." \
+/I"C:\Program Files (x86)\Windows Kits\8.1\Include\um" \
+/I"C:\Program Files (x86)\Windows Kits\8.1\Include\shared" \
+/I"C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include"
+
+#-----------------------------------------
+!IF "$(PLATFORM)" == "x64"
+CC = "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\amd64\cl.exe"
+LD = "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\amd64\link.exe"
+LB = "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\amd64\lib.exe"
+RC = "C:\Program Files (x86)\Windows Kits\8.1\bin\x86\rc.exe"
+!ENDIF
+
+#-----------------------------------------
+CXXFLAGS_x64 = /c /Zi /nologo /W3 /WX- /D WIN64 /D _CONSOLE /D _MBCS /EHsc /GS /fp:precise /Zc:wchar_t /Zc:forScope /Gd /TP /errorReport:prompt
+
+#-----------------------------------------
+!IF "$(PLATFORM)" == "x64"
+
+!	IF $(DEBUG) == 1
+CXXFLAGS = $(CXXFLAGS_x64) /D _DEBUG /Gm /MTd /Od /RTC1
+LBFLAGS = /NOLOGO /MACHINE:X64
+!	ELSE
+CXXFLAGS = $(CXXFLAGS_x64) /D NDEBUG /Gm- /MT /O2 /Oi /GL /Gy
+LBFLAGS = /NOLOGO /MACHINE:X64 /LTCG
+!	ENDIF
+
+!ENDIF
+
+#-----------------------------------------
+lib_a = win32.lib
+
+SRCS = \
+.\LogFile_win32.cpp \
+.\shared_library_win32.cpp \
+.\thread_win32.cpp \
+.\timer_win32.cpp
+
+OBJS = $(SRCS:.cpp=.obj)
+
+#----------------------------------
+all: $(lib_a)
+
+$(lib_a): $(OBJS)
+	$(LB) /OUT:"$(lib_a)" $(LBFLAGS) $(OBJS)
+
+.cpp.obj:
+	$(CC) $(CXXFLAGS) $(INCLUDE) /Fo"$(TEMP_DIR)\\" /Fd"$(TEMP_DIR)\\" $<
+
+#-----------------------------------------
+clean:
+	if exist "$(TEMP_DIR)" del /q "$(TEMP_DIR)\*.obj" "$(TEMP_DIR)\*.idb" "$(TEMP_DIR)\*.pdb" $(lib_a)
+

@@ -19,7 +19,24 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\FuncRoute.cpp" />
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\os\linux\LogFile_linux.cpp" />
+    <ClCompile Include="src\os\linux\shared_library_linux.cpp" />
+    <ClCompile Include="src\os\linux\thread_linux.cpp" />
+    <ClCompile Include="src\os\linux\timer_linux.cpp" />
+    <ClCompile Include="src\os\win32\LogFile_win32.cpp" />
+    <ClCompile Include="src\os\win32\shared_library_win32.cpp" />
+    <ClCompile Include="src\os\win32\thread_win32.cpp" />
+    <ClCompile Include="src\os\win32\timer_win32.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\FuncRoute.h" />
+    <ClInclude Include="src\os\LogFile.h" />
+    <ClInclude Include="src\os\share_library.h" />
+    <ClInclude Include="src\os\thread.h" />
+    <ClInclude Include="src\os\timer.h" />
+    <ClInclude Include="src\version.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{759F37F8-D3BF-40E9-B898-6CE0267D403F}</ProjectGuid>
@@ -114,6 +131,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>Shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">

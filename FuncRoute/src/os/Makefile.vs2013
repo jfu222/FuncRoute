@@ -1,0 +1,83 @@
+# Makefile for project VideoImageEncoderDecoder; vs2013 x64|Win32;
+# "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall.bat" amd64|x86
+# fuj@1000video.com.cn && 2018.07.06
+
+PLATFORM = x64
+
+!IFNDEF DEBUG
+DEBUG = 0
+!ENDIF
+
+MAKEFILE_NAME = Makefile.vs2013
+MAKEFILE_DIR = $(MAKEDIR)
+
+#-----------------------------------------
+TEMP_DIR = .
+
+#----------------------------------
+INCLUDE = \
+/I"." \
+/I"C:\Program Files (x86)\Windows Kits\8.1\Include\um" \
+/I"C:\Program Files (x86)\Windows Kits\8.1\Include\shared" \
+/I"C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\include" \
+/I"C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\atlmfc\include"
+
+#-----------------------------------------
+!IF "$(PLATFORM)" == "x64"
+CC = "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\amd64\cl.exe"
+LD = "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\amd64\link.exe"
+LB = "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\amd64\lib.exe"
+RC = "C:\Program Files (x86)\Windows Kits\8.1\bin\x86\rc.exe"
+!ENDIF
+
+#-----------------------------------------
+CXXFLAGS_x64 = /c /Zi /nologo /W3 /WX- /D WIN64 /D _CONSOLE /D _MBCS /EHsc /GS /fp:precise /Zc:wchar_t /Zc:forScope /Gd /TP /errorReport:prompt $(CUDA_CFLAGS)
+
+#-----------------------------------------
+!IF "$(PLATFORM)" == "x64"
+
+!	IF $(DEBUG) == 1
+CXXFLAGS = $(CXXFLAGS_x64) /D _DEBUG /Gm /MTd /Od /RTC1
+LBFLAGS = /NOLOGO /MACHINE:X64
+!	ELSE
+CXXFLAGS = $(CXXFLAGS_x64) /D NDEBUG /Gm- /MT /O2 /Oi /GL /Gy
+LBFLAGS = /NOLOGO /MACHINE:X64 /LTCG
+!	ENDIF
+
+!ENDIF
+
+#----------------------------------
+SUBDIRS = \
+	win32 \
+	.
+
+#----------------------------------
+all:
+	$(MAKE) /$(MAKEFLAGS) -f Makefile.vs2013 all-recursive
+
+#----------------------------------
+all-am:
+
+#----------------------------------
+recursive_targets = all-recursive clean-recursive
+
+$(recursive_targets):
+	set target_temp=$@
+	set list=$(SUBDIRS)
+	for %%i in (%%list%%) do \
+	( \
+		echo "Making %%target_temp:-recursive=%% in %%i\$(MAKEFILE_NAME)" & \
+		if "%%i"=="." \
+		( \
+			if exist $(MAKEFILE_DIR)\%%i\$(MAKEFILE_NAME) ( cd $(MAKEFILE_DIR)\%%i && $(MAKE) /$(MAKEFLAGS) -f $(MAKEFILE_NAME) DEBUG=$(DEBUG) USE_CUDA_VERSION=$(USE_CUDA_VERSION) FFMPEG_VERSION=$(FFMPEG_VERSION) %%target_temp:-recursive=%%-am ) \
+		) \
+		else \
+		( \
+			if exist $(MAKEFILE_DIR)\%%i\$(MAKEFILE_NAME) ( cd $(MAKEFILE_DIR)\%%i && $(MAKE) /$(MAKEFLAGS) -f $(MAKEFILE_NAME) DEBUG=$(DEBUG) USE_CUDA_VERSION=$(USE_CUDA_VERSION) FFMPEG_VERSION=$(FFMPEG_VERSION) %%target_temp:-recursive=%% ) \
+		) \
+	)
+
+#----------------------------------
+clean: clean-recursive
+
+clean-am:
