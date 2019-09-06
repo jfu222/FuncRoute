@@ -11,6 +11,11 @@ int main(int argc, char *argv[])
 //	std::string filePath = "F:\\work\\vs2013\\test";
 	std::string filePath = "F:\\git\\DuoXiangShi";
 
+	if (argc == 2)
+	{
+		filePath = argv[1];
+	}
+
 	std::vector<std::string> suffixes;
 
 	suffixes.push_back(".h");
