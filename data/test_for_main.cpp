@@ -6,6 +6,22 @@
 #define DEFAULT_A           (10)
 #define DEFAULT_B        (10)
 
+#define RETURN_IF_FAILED(condition, ret)                                                      \
+    do                                                                                        \
+    {                                                                                         \
+        if (condition)                                                                        \
+        {                                                                                     \
+            printf("%s(%d): %s: Error: ret=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret);    \
+            return ret;                                                                       \
+        }                                                                                     \
+    } while (0)
+
+
+#define A(x)    #@x         //对单字符加单引号,例如：A(x) 表示 'x',A(abcd)则无效
+#define B(x)    #x          //加双引号，即将x转换成字符串，例如：B(hello)，表示 "hello"
+#define C(x)    hello##x    //把标识符连接起来，犹如胶水一样，将两个单词粘起来，例如：C(_world)，表示hello_world
+
+		
 using namespace std;
 
 typedef struct _ST_AAAA_
@@ -13,6 +29,12 @@ typedef struct _ST_AAAA_
 	unsigned char *a;
 	unsigned int b;
 	long long c;
+	
+public:
+	int set_ABC()
+	{
+		return -2;
+	}
 }ST_AAAA;
 
 

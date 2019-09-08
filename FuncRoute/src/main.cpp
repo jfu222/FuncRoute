@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include "FuncRoute.h"
 
+#define A(a   ,  \
+   b) 3.14
 
 int main(int argc, char *argv[])
 {
+	A(1,2);
 	CFuncRoute fr;
 
 	int ret = 0;

@@ -17,6 +17,8 @@ typedef struct _STRING_POSITON_
 {
 	unsigned char *start;
 	unsigned char *end;
+	unsigned int fileOffsetOfStart;
+	unsigned int fileOffsetOfEnd;
 	unsigned int lineNumberOfStart;
 	unsigned int lineNumberOfEnd;
 	unsigned int length;
@@ -95,6 +97,11 @@ typedef struct _FUNCTION_STRUCTURE_
 	STRING_POSITON functionParameter; //函数参数
 	STRING_POSITON functionTypeQualifier; //函数参数右小括号后面紧跟的修饰符(type-qualifier类型限定符)：=0, =default, =delete, const，voliate, &(左值引用限定符), &&(右值引用限定符), override, final, noexcept, throw
 	STRING_POSITON functionBody; //函数体
+	std::vector<STRING_POSITON> funcsInFunctionBody; //函数体内部，调用了哪些其他函数
+	std::vector<STRING_POSITON> funcsWhichCallMe; //该函数被哪些函数调用了
+	char className[200]; //函数所在的C++类名称
+	char structName[200]; //函数所在的C++结构体名称
+	char classNameAlias[200]; //类/结构体的别名
 	char funcString[1024]; //函数返回值 + 函数名 + 函数参数
 /*
 public:
@@ -143,6 +150,24 @@ public:
 }FUNCTIONS;
 
 
+typedef struct _CLASS_STRUCT_
+{
+	STRING_POSITON className; //类/结构体名
+	STRING_POSITON classNameAlias; //类/结构体的别名
+	STRING_POSITON classBody; //类的体
+	STRING_POSITON classParent; //父类
+	bool isStruct; //是否是结构体
+}CLASS_STRUCT;
+
+
+typedef struct _MACRO_
+{
+	char macroName[256]; //宏名
+	char macroArgs[256]; //宏名参数列表
+	char macroBody[1024]; //宏体
+}MACRO;
+
+
 //---------C/C++源代码文件函数调用关系类-----------------
 class CFuncRoute
 {
@@ -157,6 +182,11 @@ public:
 	int findAllFunctionsName(std::string filePath, std::vector<std::string> suffixes); //从源代码文件里面，提取出所有函数名
 	int search_C_FuncName(unsigned char *buffer, unsigned int bufferSize, FUNCTIONS &functions); //从内存buffer中，搜索C语言函数名
 	int search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSize, FUNCTIONS &functions); //从内存buffer中，搜索C++语言函数名
+	bool isKeyword(unsigned char *buffer, int bufferSize); //字符串是否是C/C++语言关机词
+	int replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferSize); //将所有用"//..."或"/*...*/"注释掉的代码用空格' '代替
+	int findStr(unsigned char *buffer, int bufferSize, const char *str, int &pos); //在内存中，查找指定的字符串
+	int findAllMacros(std::vector<std::string> files, std::vector<MACRO> &macros); //从所有代码源文件中，找到所有的宏定义
+	int macroExpand(); //将宏定义展开
 };
 
 #endif //__FUNC_ROUTE_H__

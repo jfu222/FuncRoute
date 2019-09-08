@@ -32,6 +32,8 @@
     <ClCompile Include="src\os\win32\timer_win32.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\CKeyword.h" />
+    <ClInclude Include="src\CPPKeyword.h" />
     <ClInclude Include="src\FuncRoute.h" />
     <ClInclude Include="src\os\LogFile.h" />
     <ClInclude Include="src\os\share_library.h" />
