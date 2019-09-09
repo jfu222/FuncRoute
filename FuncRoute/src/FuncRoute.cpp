@@ -161,18 +161,9 @@ int CFuncRoute::findAllFunctionsName(std::string filePath, std::vector<std::stri
 	}
 
 	//---------分析各个函数之间的调用关系--------------
-	int len31 = allFuncs.size();
+	ret = statAllFuns(allFuncs);
 
-	for (int i = 0; i < len31; ++i)
-	{
-		int len32 = allFuncs[i].funcs.size();
-		for (int j = 0; j < len32; ++j)
-		{
-			
-		}
-	}
-
-	return 0;
+	return ret;
 }
 
 
@@ -857,26 +848,16 @@ retry3:
 			funcStruct.functionBody.end = p2;
 			funcStruct.functionBody.fileOffsetOfEnd = funcStruct.functionBody.end - p1;
 			funcStruct.functionBody.lineNumberOfEnd = lineNumber;
+			funcStruct.functionBody.length = funcStruct.functionBody.end - funcStruct.functionBody.start + 1;
 
 			//--------查找函数体内部调用了哪些其他函数---------------
-			p21 = funcStruct.functionBody.start;
-			std::vector<unsigned char *> vPointers;
-
-			while(p21 < p2)
+			ret = findAllFuncsInFunctionBody(funcStruct.functionBody.start, funcStruct.functionBody.length, funcStruct.funcsWhichInFunctionBody, p1, funcStruct.functionBody.lineNumberOfStart);
+			if (ret != 0)
 			{
-				if(*p21 == '(') //可能是函数调用的参数列表的左括号
-				{
-					vPointers.push_back(p21);
-				}else if(*p21 == ')') //可能是函数调用的参数列表的右括号
-				{
-					
-				}
-
-				p21++;
+				ret = -8;
+				printf("%s(%d): %s: Error: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
+				break;
 			}
-
-			//-----------------------
-			p1 = p2; //更新 p1 的值
 		}
 
 		//--------查找到一个完整的函数----------------
@@ -1372,3 +1353,399 @@ int CFuncRoute::findAllMacros(std::vector<std::string> files, std::vector<MACRO>
 	return ret;
 }
 
+
+int CFuncRoute::findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize, std::vector<CLASS_INSTANCE> &funcsWhichInFunctionBody, unsigned char *bufferBase, int lineNumberBase)
+{
+	int ret = 0;
+
+	unsigned char *p1 = buffer;
+	unsigned char *p11 = bufferBase;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = NULL;
+	unsigned char *p22 = NULL;
+	int lineNumber = lineNumberBase;
+	int lineNumberTemp = lineNumber;
+	bool ret2 = false;
+
+	//--------查找函数体内部调用了哪些其他函数---------------
+retry:
+	while (p2 <= p3)
+	{
+		if (*p2 == '(') //可能是函数调用的参数列表的左括号
+		{
+			p21 = p2;
+			lineNumberTemp = lineNumber;
+
+			CLASS_INSTANCE instance;
+			memset(&instance, 0, sizeof(CLASS_INSTANCE));
+
+			instance.functionArgs.start = p21;
+			instance.functionArgs.fileOffsetOfStart = instance.functionArgs.start - p11;
+			instance.functionArgs.lineNumberOfStart = lineNumber;
+
+			p21--;
+			while (p21 > p1 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
+			{
+				if (*p21 == '\n')
+				{
+					lineNumber--;
+				}
+				p21--;
+			}
+
+			if (p21 > p1)
+			{
+				instance.functionName.end = p21;
+				instance.functionName.fileOffsetOfEnd = instance.functionName.end - p11;
+				instance.functionName.lineNumberOfEnd = lineNumber;
+
+				//----查找函数名----
+				while (p21 >= p1)
+				{
+					if (!((*p21 >= '0' && *p21 <= '9')
+						|| (*p21 >= 'a' && *p21 <= 'z')
+						|| (*p21 >= 'A' && *p21 <= 'Z')
+						|| (*p21 == '_')
+						)) //C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+					{
+						break;
+					}
+					p21--;
+				}
+
+				if (p21 > p1) //找到函数名了
+				{
+					instance.functionName.start = p21 + 1;
+					instance.functionName.fileOffsetOfStart = instance.functionName.start - p11;
+					instance.functionName.lineNumberOfStart = lineNumber;
+					instance.functionName.length = instance.functionName.end - instance.functionName.start + 1;
+
+					instance.functionName.copyStrFromBuffer();
+
+					//检测是否是类似 if(...) 等关键字语法，如果是，则跳过
+					ret2 = isKeyword(instance.functionName.start, instance.functionName.end - instance.functionName.start + 1);
+					if (ret2) //函数名是C/C++语言关键词
+					{
+						lineNumber = lineNumberTemp;
+						p2++;
+						if (*p2 == '\n')
+						{
+							lineNumber++;
+						}
+						p1 = p2 + 1; //更新 p1 的值
+						p2 = p1; //更新 p2 的值
+						goto retry;
+					}
+
+					//-----查找该函数是否是C++类的成员函数----------
+					while (p21 > p1 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
+					{
+						if (*p21 == '\n')
+						{
+							lineNumber--;
+						}
+						p21--;
+					}
+
+					if (p21 > p1)
+					{
+						if (*p21 == '.' //使用点号"."调用函数，例如 ret = A.set(123);
+							|| *p21 == '>' //使用箭头"->"调用函数，例如 ret = A->set(123);
+							)
+						{
+							if (*p21 == '>')
+							{
+								if (p21 - 1 > p1 && *(p21 - 1) == '-')
+								{
+									p21--;
+								}
+								else //箭头"->"中的"-"和">"之间不能有任何其他字符
+								{
+									ret = -8;
+									printf("%s(%d): %s: Error: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
+									goto end;
+								}
+							}
+
+							p21--;
+
+							if (p21 > p1)
+							{
+								while (p21 > p1 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
+								{
+									if (*p21 == '\n')
+									{
+										lineNumber--;
+									}
+									p21--;
+								}
+
+								if (p21 > p1) //找到C++类的实例名称了
+								{
+									instance.classInstanceName.end = p21;
+									instance.classInstanceName.fileOffsetOfEnd = instance.classInstanceName.end - p11;
+									instance.classInstanceName.lineNumberOfEnd = lineNumber;
+
+									//----查找实例名称----
+									while (p21 >= p1)
+									{
+										if (!((*p21 >= '0' && *p21 <= '9')
+											|| (*p21 >= 'a' && *p21 <= 'z')
+											|| (*p21 >= 'A' && *p21 <= 'Z')
+											|| (*p21 == '_')
+											)) //C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+										{
+											break;
+										}
+										p21--;
+									}
+
+									if (p21 > p1)
+									{
+										instance.classInstanceName.start = p21 + 1;
+										instance.classInstanceName.fileOffsetOfStart = instance.classInstanceName.start - p11;
+										instance.classInstanceName.lineNumberOfStart = lineNumber;
+										instance.classInstanceName.length = instance.classInstanceName.end - instance.classInstanceName.start + 1;
+
+										instance.classInstanceName.copyStrFromBuffer();
+									}
+								}
+							}
+						}
+						else if (*p21 == ':') //使用箭头"::"调用函数，例如 ret = A::set(123);
+						{
+							if (p21 - 1 > p1 && *(p21 - 1) == ':')
+							{
+								p21 -= 2;
+							}
+							else //箭头"::"中的":"和":"之间不能有任何其他字符
+							{
+								ret = -8;
+								printf("%s(%d): %s: Error: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
+								goto end;
+							}
+
+							if (p21 > p1)
+							{
+								while (p21 > p1 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
+								{
+									if (*p21 == '\n')
+									{
+										lineNumber--;
+									}
+									p21--;
+								}
+
+								if (p21 > p1) //找到C++类名了
+								{
+									instance.className.end = p21;
+									instance.className.fileOffsetOfEnd = instance.className.end - p11;
+									instance.className.lineNumberOfEnd = lineNumber;
+
+									//----查找类名----
+									while (p21 >= p1)
+									{
+										if (!((*p21 >= '0' && *p21 <= '9')
+											|| (*p21 >= 'a' && *p21 <= 'z')
+											|| (*p21 >= 'A' && *p21 <= 'Z')
+											|| (*p21 == '_')
+											)) //C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+										{
+											break;
+										}
+										p21--;
+									}
+
+									if (p21 > p1)
+									{
+										instance.className.start = p21 + 1;
+										instance.className.fileOffsetOfStart = instance.className.start - p11;
+										instance.className.lineNumberOfStart = lineNumber;
+										instance.className.length = instance.className.end - instance.className.start + 1;
+
+										instance.className.copyStrFromBuffer();
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+
+			//---------查找函数调用的参数列表的右括号-----------
+			p21 = instance.functionArgs.start;
+			lineNumber = lineNumberTemp;
+
+			while (p21 < p3 && *p21 != ')')
+			{
+				if (*p21 == '\n')
+				{
+					lineNumber++;
+				}
+				p21++;
+			}
+
+			if (p21 <= p3)
+			{
+				instance.functionArgs.end = p21;
+				instance.functionArgs.fileOffsetOfEnd = instance.functionArgs.end - p11;
+				instance.functionArgs.lineNumberOfEnd = lineNumber;
+				instance.functionArgs.length = instance.functionArgs.end - instance.functionArgs.start + 1;
+				instance.functionArgs.copyStrFromBuffer();
+
+				funcsWhichInFunctionBody.push_back(instance);
+			}
+
+			p1 = p21; //更新 p1 的值
+			p2 = p1; //更新 p2 的值
+		}
+		
+		if (*p2 == '\n')
+		{
+			lineNumber++;
+		}
+
+		p2++;
+	}
+
+end:
+
+	return ret;
+}
+
+
+int CFuncRoute::macroExpand()
+{
+	int ret = 0;
+
+	return ret;
+}
+
+
+int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
+{
+	int ret = 0;
+
+	int funcCnt = 1;
+
+	//-------先对所有函数进行编号------------
+	int len1 = vFunctions.size();
+	for (int i = 0; i < len1; ++i)
+	{
+		int len2 = vFunctions[i].funcs.size();
+		for (int j = 0; j < len2; ++j)
+		{
+			vFunctions[i].funcs[j].functionIndex = funcCnt++;
+		}
+	}
+
+	//-------再查找某个函数被哪些函数调用了------------
+	for (int i = 0; i < len1; ++i)
+	{
+		int len2 = vFunctions[i].funcs.size();
+
+		for (int j = 0; j < len2; ++j)
+		{
+			std::string funcMe = vFunctions[i].funcs[j].functionName.str;
+			std::string classMe = vFunctions[i].funcs[j].className;
+			std::string classMe2 = vFunctions[i].funcs[j].classNameAlias;
+
+			size_t pos = funcMe.rfind("::");
+			if (pos != std::string::npos)
+			{
+				funcMe = funcMe.substr(pos + 2);
+			}
+
+			//-------在其他函数中遍历查找----------------
+			for (int i2 = 0; i2 < len1; ++i2)
+			{
+				for (int j2 = 0; j2 < len2; ++j2)
+				{
+					if (!(i2 == i && j2 == j))
+					{
+						int len3 = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody.size();
+						for (int k = 0; k < len3; ++k)
+						{
+							std::string funcWhichCalledMe = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionName.str;
+							std::string classWhichCalledMe = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].className.str;
+							
+							if (funcWhichCalledMe == funcMe
+								// && classMe2 == classWhichCalledMe //FIXME: 严格来讲，类名也需要比较，因为不同的类有可能使用同一个函数名
+								) //说明被这个函数调用了
+							{
+//								if (vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionIndex == 0) //FIXME
+								{
+									vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionIndex = vFunctions[i].funcs[j].functionIndex;
+								}
+//								vFunctions[i].funcs[j].funcsWhichCalledMe[vFunctions[i2].funcs[j2].functionIndex] += 1;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	//--------打印统计信息-------------------
+	for (int i = 0; i < len1; ++i)
+	{
+		int len2 = vFunctions[i].funcs.size();
+
+		for (int j = 0; j < len2; ++j)
+		{
+			std::string className = "";
+			std::string str1 = vFunctions[i].funcs[j].classNameAlias + std::string("::");
+			std::string str2 = vFunctions[i].funcs[j].functionName.str;
+			
+			if (strlen(vFunctions[i].funcs[j].className) > 0)
+			{
+				str1 = vFunctions[i].funcs[j].className + std::string("::");
+			}
+
+			if (str1 != "::" 
+				&& !(str2.length() > str1.length() && str2.substr(0, str1.length()) == str1)
+				)
+			{
+				className = str1;
+			}
+
+			printf("%s\t%d\t%d\t%s%s%s\t", vFunctions[i].fllename, vFunctions[i].funcs[j].functionName.lineNumberOfStart, vFunctions[i].funcs[j].functionIndex, 
+				className.c_str(), vFunctions[i].funcs[j].functionName.str, vFunctions[i].funcs[j].functionParameter.str);
+			
+			int len3 = vFunctions[i].funcs[j].funcsWhichInFunctionBody.size();
+			for (int k = 0; k < len3; ++k)
+			{
+				if (k != len3 - 1)
+				{
+					printf("%d,", vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionIndex);
+				}
+				else
+				{
+					printf("%d", vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionIndex);
+				}
+			}
+/*
+			printf("\t");
+
+			int len4 = vFunctions[i].funcs[j].funcsWhichCalledMe.size();
+			int cnt = 0;
+			std::map<int, int>::iterator it;
+			for (it = vFunctions[i].funcs[j].funcsWhichCalledMe.begin(); it != vFunctions[i].funcs[j].funcsWhichCalledMe.end(); ++it)
+			{
+				if (cnt <= len4 - 1)
+				{
+					printf("%d-%d,", it->first, it->second);
+				}
+				else
+				{
+					printf("%d-%d", it->first, it->second);
+				}
+				cnt++;
+			}*/
+			printf("\n");
+		}
+	}
+
+	return ret;
+}

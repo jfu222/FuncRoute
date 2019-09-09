@@ -1,18 +1,14 @@
 #include <stdio.h>
 #include "FuncRoute.h"
 
-#define A(a   ,  \
-   b) 3.14
 
 int main(int argc, char *argv[])
 {
-	A(1,2);
 	CFuncRoute fr;
 
 	int ret = 0;
 
-//	std::string filePath = "F:\\work\\vs2013\\test";
-	std::string filePath = "F:\\git\\DuoXiangShi";
+	std::string filePath = "C:\\vs2013\\test";
 
 	if (argc == 2)
 	{

@@ -68,6 +68,7 @@ public:
 	virtual unsigned int get(int &a) const
 	{
 		a = m_a;
+		int ret = set(123);
 		return 0;
 	}
 
@@ -80,12 +81,14 @@ class B : public A
 {
 public:
 	int m_b;
+	static int m_b2;
 
 public:
 	B();
 	~B();
 	unsigned int get2(int &a);
 	ST_AAAA returnClass(int a); //返回值为C++类
+	static int init();
 };
 
 
@@ -125,6 +128,14 @@ static B::returnClass(int *a) /* 这是多行注释 * /{ //这是单行注释
 	  return st_a;
   }
 
+int B::init()
+{
+	if(m_b2 == 1)
+	{
+		printf("%s: yes\n", __FUNCTION__);
+	}
+	return -2;
+}
 
 /*
 这是多行注释
@@ -132,5 +143,41 @@ static B::returnClass(int *a) /* 这是多行注释 * /{ //这是单行注释
 */
 int main(int argc, char *argv[])
 {
+	int ret = 0;
+	B classB;
+	B * pClassB2 = new B;
+	
+	ret = B::init(); //测试"::"调用函数
+
+	ret = B  
+	   ::
+  init 	(
+         )
+  ; //测试"::"调用函数
+  
+	if(ret != 0)
+	{
+		printf("%s: Error: ret=%d;\n", __FUNCTION__, ret);
+	}
+	
+	ret = classB.set(); //测试"."调用函数
+	ret = classB  .  set(); //测试"."调用函数
+	if(ret != 0)
+	{
+		printf("%s: Error: ret=%d;\n", __FUNCTION__, ret);
+	}
+	
+	ret = pClassB2->set(); //测试"->"调用函数
+	ret = pClassB2
+	   ->
+   set   (
+   )
+   ; //测试"->"调用函数
+   
+	if(ret != 0)
+	{
+		printf("%s: Error: ret=%d;\n", __FUNCTION__, ret);
+	}
+	
 	return 0;//这是单行注释
 }

@@ -3,14 +3,7 @@
 
 #include <string>
 #include <vector>
-
-
-typedef struct _BYTES_STREAM_
-{
-	unsigned char *buffer;
-	unsigned int bufferSize;
-	unsigned int offset;
-}BYTES_STREAM;
+#include <map>
 
 
 typedef struct _STRING_POSITON_
@@ -23,50 +16,8 @@ typedef struct _STRING_POSITON_
 	unsigned int lineNumberOfEnd;
 	unsigned int length;
 	char str[1024];
-/*
+
 public:
-	_STRING_POSITON_()
-	{
-		start = NULL;
-		end = NULL;
-		lineNumberOfStart = 0;
-		lineNumberOfEnd = 0;
-		length = 0;
-		str = NULL;
-	}
-	_STRING_POSITON_(const _STRING_POSITON_ &s)
-	{
-		*this = s;
-	}
-	~_STRING_POSITON_()
-	{
-		freeData();
-	}
-	_STRING_POSITON_ operator = (const _STRING_POSITON_ &s)
-	{
-		this->start = s.start;
-		this->end = s.end;
-		this->lineNumberOfStart = s.lineNumberOfStart;
-		this->lineNumberOfEnd = s.lineNumberOfEnd;
-		this->length = s.length;
-		this->str = NULL;
-
-		this->copyStrFromBuffer();
-
-		return *this;
-	}
-	int freeData(){ if(str){free(str); str = NULL;} return 0; }
-	int copyStrFromBuffer()
-	{
-		int ret = 0;
-		if (start == NULL){ return -1; }
-		ret = freeData();
-		str = (char *)malloc(length + 1);
-		if (str == NULL){ printf("Error: malloc() failed!\n"); return -1; }
-		memcpy(str, start, length);
-		str[length] = '\0';
-		return 0;
-	}*/
 	int copyStrFromBuffer()
 	{
 		int ret = 0;
@@ -89,6 +40,27 @@ public:
 }STRING_POSITON;
 
 
+//C++类/结构体的实例化对象
+typedef struct _CLASS_INSTANCE_
+{
+	STRING_POSITON className; //类名
+	STRING_POSITON classInstanceName; //类的实例化对象名
+	STRING_POSITON functionName; //调用的是类的哪一个函数
+	STRING_POSITON functionArgs; //函数的参数
+	STRING_POSITON functionReturnValue; //函数返回值
+	int functionIndex; //函数编号，全局唯一
+}CLASS_INSTANCE;
+
+
+//C++变量声明
+typedef struct _VAR_DECLARE_
+{
+	STRING_POSITON varType; //变量类型
+	STRING_POSITON varName; //变量名
+	int functionIndex; //变量编号，全局唯一
+}VAR_DECLARE;
+
+
 typedef struct _FUNCTION_STRUCTURE_
 {
 	STRING_POSITON functionReturnValueTypeQualifier; //函数返回值(type-qualifier类型限定符)： const，template, virtual, inline, static, extern, explicit, friend, constexpr
@@ -97,33 +69,13 @@ typedef struct _FUNCTION_STRUCTURE_
 	STRING_POSITON functionParameter; //函数参数
 	STRING_POSITON functionTypeQualifier; //函数参数右小括号后面紧跟的修饰符(type-qualifier类型限定符)：=0, =default, =delete, const，voliate, &(左值引用限定符), &&(右值引用限定符), override, final, noexcept, throw
 	STRING_POSITON functionBody; //函数体
-	std::vector<STRING_POSITON> funcsInFunctionBody; //函数体内部，调用了哪些其他函数
-	std::vector<STRING_POSITON> funcsWhichCallMe; //该函数被哪些函数调用了
+	std::vector<CLASS_INSTANCE> funcsWhichInFunctionBody; //函数体内部，调用了哪些其他函数
+//	std::map<int, int> funcsWhichCalledMe; //该函数被哪些函数(使用函数编号表示)调用了（可能会被同一个函数多次调用）
 	char className[200]; //函数所在的C++类名称
 	char structName[200]; //函数所在的C++结构体名称
 	char classNameAlias[200]; //类/结构体的别名
 	char funcString[1024]; //函数返回值 + 函数名 + 函数参数
-/*
-public:
-	_FUNCTION_STRUCTURE_(){}
-	~_FUNCTION_STRUCTURE_(){}
-	_FUNCTION_STRUCTURE_(const _FUNCTION_STRUCTURE_ &s)
-	{
-		*this = s;
-	}
-	_FUNCTION_STRUCTURE_ operator = (const _FUNCTION_STRUCTURE_ &f)
-	{
-		this->functionReturnValueTypeQualifier = f.functionReturnValueTypeQualifier;
-		this->functionReturnValue = f.functionReturnValue;
-		this->functionName = f.functionName;
-		this->functionParameter = f.functionParameter;
-		this->functionTypeQualifier = f.functionTypeQualifier;
-		this->functionBody = f.functionBody;
-
-		memcpy(this->funcString, f.funcString, sizeof(funcString));
-
-		return *this;
-	}*/
+	int functionIndex; //函数编号，全局唯一
 }FUNCTION_STRUCTURE;
 
 
@@ -131,22 +83,6 @@ typedef struct _FUNCTIONS_
 {
 	unsigned char fllename[600]; //所在文件名
 	std::vector<FUNCTION_STRUCTURE> funcs;
-/*
-public:
-	_FUNCTIONS_(){}
-	~_FUNCTIONS_(){}
-	_FUNCTIONS_ operator = (const _FUNCTIONS_ &f)
-	{
-		memcpy(this->fllename, f.fllename, sizeof(fllename));
-
-		int len = f.funcs.size();
-		for (int i = 0; i < len; ++i)
-		{
-			this->funcs.push_back(f.funcs[i]);
-		}
-
-		return *this;
-	}*/
 }FUNCTIONS;
 
 
@@ -182,11 +118,13 @@ public:
 	int findAllFunctionsName(std::string filePath, std::vector<std::string> suffixes); //从源代码文件里面，提取出所有函数名
 	int search_C_FuncName(unsigned char *buffer, unsigned int bufferSize, FUNCTIONS &functions); //从内存buffer中，搜索C语言函数名
 	int search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSize, FUNCTIONS &functions); //从内存buffer中，搜索C++语言函数名
-	bool isKeyword(unsigned char *buffer, int bufferSize); //字符串是否是C/C++语言关机词
+	bool isKeyword(unsigned char *buffer, int bufferSize); //字符串是否是C/C++语言关键词
 	int replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferSize); //将所有用"//..."或"/*...*/"注释掉的代码用空格' '代替
 	int findStr(unsigned char *buffer, int bufferSize, const char *str, int &pos); //在内存中，查找指定的字符串
 	int findAllMacros(std::vector<std::string> files, std::vector<MACRO> &macros); //从所有代码源文件中，找到所有的宏定义
+	int findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize, std::vector<CLASS_INSTANCE> &funcsWhichInFunctionBody, unsigned char *bufferBase, int lineNumberBase); //查找函数体内部调用的所有其他函数
 	int macroExpand(); //将宏定义展开
+	int statAllFuns(std::vector<FUNCTIONS> &vFunctions); //统计所有函数之间的调用关系
 };
 
 #endif //__FUNC_ROUTE_H__
