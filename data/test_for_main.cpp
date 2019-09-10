@@ -169,7 +169,7 @@ int main(int argc, char *argv[])
 	}
 
 	ret = classB.set(1); //测试"."调用函数
-	ret = classB.set(2, 34); //测试"."调用函数
+	unsigned long long * ret2 = classB.set(2, 34); //测试"."调用函数
 	if (ret != 0)
 	{
 		printf("%s: Error: ret=%d;\n", __FUNCTION__, ret);

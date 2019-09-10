@@ -2036,6 +2036,53 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			vFunctions[i].funcs[j].functionIndex = funcCnt++;
 		}
 	}
+	
+	//-------更新函数体中C++类变量的类型------------
+	for (int i = 0; i < len1; ++i)
+	{
+		int len3 = vFunctions[i].classes.size();
+		for (int j = 0; j < len3; ++j)
+		{
+			//-------------------
+			for (int i2 = 0; i2 < len1; ++i2)
+			{
+				int len2 = vFunctions[i2].funcs.size();
+				for (int j2 = 0; j2 < len2; ++j2)
+				{
+					std::string className1 = vFunctions[i2].funcs[j2].className;
+					std::string className2 = vFunctions[i].classes[j].className.str;
+
+					if(className1 == className2) //确保是同一个C++类名
+					{
+						int len4 = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody.size();
+						for (int k2 = 0; k2 < len4; ++k2)
+						{
+							if(strlen(vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k2].className.str) == 0)
+							{
+								int len5 = vFunctions[i].classes[j].memberVars.size();
+								for (int m2 = 0; m2 < len5; ++m2)
+								{
+									int len61 = strlen(vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k2].classInstanceName.str);
+									int len62 = strlen(vFunctions[i].classes[j].memberVars[m2].varName.str);
+									if(len61 == len62 
+										&& memcmp(vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k2].classInstanceName.str, vFunctions[i].classes[j].memberVars[m2].varName.str, len61) == 0
+										) //C++类的成员变量和成员函数体中的某个变量相等了
+									{
+										int len63 = strlen(vFunctions[i].classes[j].memberVars[m2].varType.str);
+										int len64 = MIN(len63, sizeof(vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k2].className.str) - 1);
+										if(len64 > 0)
+										{
+											memcpy(vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k2].className.str, vFunctions[i].classes[j].memberVars[m2].varType.str, len64);
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
 	//-------再查找某个函数被哪些函数调用了------------
 	for (int i = 0; i < len1; ++i)
@@ -2069,14 +2116,19 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 							std::string classWhichCalledMe = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].className.str;
 							std::string functionArgs = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionArgs.str;
 							
-							if (funcWhichCalledMe == funcMe
-								&& (classMe == classWhichCalledMe || classMe2 == classWhichCalledMe) //FIXME: 严格来讲，类名也需要比较，因为不同的类有可能使用同一个函数名
+							if (funcWhichCalledMe == funcMe 
 								&& isFunctionArgsMatch(parameter, functionArgs)
 								) //说明被这个函数调用了
 							{
-								if (vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionIndex == 0) //FIXME
+								if((classWhichCalledMe != "" && classMe != "" && classWhichCalledMe == classMe)
+									|| (classWhichCalledMe != "" && classMe2 != "" && classWhichCalledMe == classMe2)
+									|| (classWhichCalledMe == "" && classMe == "" && classMe2 == "")
+									)
 								{
-									vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionIndex = vFunctions[i].funcs[j].functionIndex;
+									if (vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionIndex == 0) //FIXME
+									{
+										vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionIndex = vFunctions[i].funcs[j].functionIndex;
+									}
 								}
 //								vFunctions[i].funcs[j].funcsWhichCalledMe[vFunctions[i2].funcs[j2].functionIndex] += 1;
 							}
