@@ -226,8 +226,6 @@ int CFuncRoute::search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSi
 	int structLen = strlen(structKeyword);
 	bool isStruct = false;
 
-	std::vector<CLASS_STRUCT> classes;
-
 	//--------查找关键字class/struct----------------
 	while (p2 <= p3 - structLen)
 	{
@@ -419,7 +417,10 @@ int CFuncRoute::search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSi
 										cs.classBody.length = cs.classBody.end - cs.classBody.start + 1;
 										cs.classBody.copyStrFromBuffer();
 
-										classes.push_back(cs);
+										//-------在类/结构体的声明语句块内部，提取出所有声明的成员变量---------
+										ret = findAllMemberVarsInClassDeclare(cs.classBody.start, cs.classBody.length, cs, p1, cs.classBody.lineNumberOfStart);
+
+										functions.classes.push_back(cs);
 
 										p2 = p21;
 									}
@@ -918,31 +919,31 @@ retry3:
 		}
 
 		//------确定函数是哪一个C++类的成员函数-----------
-		for(int i = 0; i < classes.size(); ++i)
+		for (int i = 0; i < functions.classes.size(); ++i)
 		{
-			if(funcStruct.functionName.start > classes[i].classBody.start && funcStruct.functionName.end < classes[i].classBody.end)
+			if (funcStruct.functionName.start > functions.classes[i].classBody.start && funcStruct.functionName.end < functions.classes[i].classBody.end)
 			{
-				if(classes[i].isStruct) //说明是结构体的成员函数
+				if (functions.classes[i].isStruct) //说明是结构体的成员函数
 				{
-					int len = MIN(classes[i].className.length, sizeof(funcStruct.className) - 1);
+					int len = MIN(functions.classes[i].className.length, sizeof(funcStruct.className) - 1);
 					if(len > 0)
 					{
-						memcpy(funcStruct.structName, classes[i].className.str, len);
+						memcpy(funcStruct.structName, functions.classes[i].className.str, len);
 						funcStruct.structName[len] = '\0';
 					}
 
-					len = MIN(classes[i].classNameAlias.length, sizeof(funcStruct.classNameAlias) - 1);
+					len = MIN(functions.classes[i].classNameAlias.length, sizeof(funcStruct.classNameAlias) - 1);
 					if(len > 0)
 					{
-						memcpy(funcStruct.classNameAlias, classes[i].classNameAlias.str, len);
+						memcpy(funcStruct.classNameAlias, functions.classes[i].classNameAlias.str, len);
 						funcStruct.classNameAlias[len] = '\0';
 					}
 				}else //说明是C++类的成员函数
 				{
-					int len = MIN(classes[i].className.length, sizeof(funcStruct.className) - 1);
+					int len = MIN(functions.classes[i].className.length, sizeof(funcStruct.className) - 1);
 					if(len > 0)
 					{
-						memcpy(funcStruct.className, classes[i].className.str, len);
+						memcpy(funcStruct.className, functions.classes[i].className.str, len);
 						funcStruct.className[len] = '\0';
 					}
 				}
@@ -1509,6 +1510,144 @@ retry:
 										instance.classInstanceName.length = instance.classInstanceName.end - instance.classInstanceName.start + 1;
 
 										instance.classInstanceName.copyStrFromBuffer();
+
+										//-------在函数体内部尝试反向查找实例对应的类名（如果是类的成员变量则会查不到）-------------
+										p21 = instance.classInstanceName.start - instance.classInstanceName.length;
+										unsigned char * pTemp = p21;
+
+										while (p21 >= p1)
+										{
+											if (memcmp(p21, instance.classInstanceName.start, instance.classInstanceName.length) == 0)
+											{
+												p21--;
+												p22 = p21;
+												pTemp = p21;
+
+												while (p21 >= p1)
+												{
+													if (((*p21 >= '0' && *p21 <= '9')
+														|| (*p21 >= 'a' && *p21 <= 'z')
+														|| (*p21 >= 'A' && *p21 <= 'Z')
+														|| (*p21 == '_')
+														)) //C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+													{
+														break;
+													}
+
+													if (*p21 == '\n')
+													{
+														lineNumber--;
+													}
+
+													p21--;
+												}
+
+												if (p21 > p1 && p21 < p22) //变量名和类类型之间必须至少有一个非数字字母下划线字符，例如： A *a = new A(); A b(); A &c = d; std::vector<int>e;
+												{
+													p22 += instance.classInstanceName.length + 1;
+													
+													while (p22 < instance.classInstanceName.start)
+													{
+														if (*p22 == ';') //C++ 变量声明必须以一个分号';'结尾
+														{
+															break;
+														}
+														if (*p22 == '\n')
+														{
+															lineNumber++;
+														}
+														p22++;
+													}
+
+													if (p22 < instance.classInstanceName.start) //说明这的确是一个函数体内部声明的变量
+													{
+														//------继续查找变量类型--------
+														p22 = p21;
+														while (p21 >= p1)
+														{
+															if (((*p21 == ';') //上一条语句结尾
+																|| (*p21 == '{') //语句块开始
+																|| (*p21 == '}') //语句块结束
+																|| (*p21 == '：') //类似 "public: A a;"
+																//|| (*p21 == ')') //类似 if(b) A a; 但这种写法，是没有任何意义的
+																)) //C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+															{
+																break;
+															}
+
+															if (*p21 == '\n')
+															{
+																lineNumber--;
+															}
+
+															p21--;
+														}
+
+														if (p21 >= p1) //找到声明的类型了
+														{
+															while (p21 < instance.classInstanceName.start && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
+															{
+																if (*p21 == '\n')
+																{
+																	lineNumber++;
+																}
+																p21++;
+															}
+
+															//----------------------------
+															instance.className.start = p21;
+															instance.className.fileOffsetOfStart = instance.className.start - p11;
+															instance.className.lineNumberOfStart = lineNumber;
+
+															instance.className.end = p22;
+															instance.className.fileOffsetOfStart = instance.className.end - p11;
+															instance.className.lineNumberOfStart = lineNumber;
+
+															instance.className.length = instance.className.end - instance.className.start + 1;
+															//instance.className.copyStrFromBuffer();
+
+															int whiteSpaceFlag = 0;
+															int pos = 0;
+
+															while (p21 <= p22)
+															{
+																if (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n') //空白字符
+																{
+																	whiteSpaceFlag = 1;
+																}
+																else
+																{
+																	if (pos < sizeof(instance.className.str) - 2)
+																	{
+																		if (whiteSpaceFlag == 1)
+																		{
+																			whiteSpaceFlag = 0;
+																			instance.className.str[pos] = ' '; //多个连续空白字符，用一个空格代替
+																			pos++;
+																		}
+																		instance.className.str[pos] = *p21;
+																		pos++;
+																	}
+																}
+
+																if (*p21 == '\n')
+																{
+																	lineNumber++;
+																}
+
+																p21++;
+															}
+
+															instance.className.str[pos] = '\0';
+															break; //在函数体内部找到函数声明了，就直接退出循环
+														}
+													}
+												}
+
+												p21 = pTemp;
+											}
+											p21--;
+										}
 									}
 								}
 							}
@@ -1623,6 +1762,264 @@ int CFuncRoute::macroExpand()
 }
 
 
+int CFuncRoute::findAllMemberVarsInClassDeclare(unsigned char *buffer, int bufferSize, CLASS_STRUCT &classes, unsigned char *bufferBase, int lineNumberBase)
+{
+	int ret = 0;
+
+	unsigned char *p1 = buffer;
+	unsigned char *p11 = bufferBase;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = NULL;
+	unsigned char *p22 = NULL;
+	unsigned char *p23 = NULL;
+	int lineNumber = lineNumberBase;
+	int lineNumberTemp = lineNumber;
+	bool ret2 = false;
+
+	if (*p2 == '{') //跳过第一个字符是左大括号的情况
+	{
+		p2++;
+	}
+
+	//--------在类/结构体的声明语句块内部，提取出所有声明的成员变量---------------
+	while (p2 <= p3)
+	{
+		//--------跳过函数块-----------------
+		int curlyBracesFlag = 0; //花括号
+
+		if (*p2 == '{')
+		{
+			while (p2 <= p3)
+			{
+				if (*p2 == '{')
+				{
+					curlyBracesFlag++;
+				}else if (*p2 == '}')
+				{
+					if (curlyBracesFlag == 0)
+					{
+						break;
+					}
+					else
+					{
+						curlyBracesFlag--;
+					}
+				}
+				else if (*p2 == '\n')
+				{
+					lineNumber++;
+				}
+				p2++;
+			}
+
+			p2++;
+			if (p2 >= p3)
+			{
+				break;
+			}
+
+			p1 = p2; //更新 p1 的值
+		}
+
+		//---------------------
+		if (*p2 == ';') //每个变量的声明都必须以分号';'结束
+		{
+			//-----向前搜索整条语句----
+			int equalSignFlag = 0; //等号
+			int parenthesesLeftFlag = 0; //左小括号
+			int parenthesesRightFlag = 0; //右小括号
+
+			p21 = p2 - 1;
+			p22 = p21;
+
+			while (p21 >= p1)
+			{
+				if (((*p21 == ';') //上一条语句结尾
+					|| (*p21 == '{') //语句块开始
+					|| (*p21 == '}') //语句块结束
+					|| (*p21 == ':') //类似 "public: A a;"
+					//|| (*p21 == ')') //类似 if(b) A a; 但这种写法，是没有任何意义的
+					)) //C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+				{
+					break;
+				}
+				else if (*p21 == '=') //类似 virtual int func1() = 0; 或者 int operator=(int &i); 或者比较奇葩的写法 class A {int m_a = 0;}; 即在类中声明时，初始化成员变量
+				{
+					equalSignFlag++;
+				}
+				else if (*p21 == ')') //类似 int func2();
+				{
+					parenthesesLeftFlag++;
+				}
+				else if (*p21 == ')') //类似 int func2();
+				{
+					parenthesesRightFlag++;
+				}
+				else if (*p21 == '\n')
+				{
+					lineNumber--;
+				}
+
+				p21--;
+			}
+
+			//--------判断是函数声明还是变量声明------------
+			if (p21 >= p1 && p21 < p22)
+			{
+				if (parenthesesLeftFlag > 0 && parenthesesRightFlag > 0 && parenthesesLeftFlag == parenthesesRightFlag) //说明是函数声明
+				{
+					//do nothing
+				}
+				else //说明是变量声明，类似：unsgned int m_a;
+				{
+					if (equalSignFlag == 0)
+					{
+						VAR_DECLARE var;
+						memset(&var, 0, sizeof(VAR_DECLARE));
+
+						p23 = p21 + 1;
+						p21 = p22;
+						lineNumberTemp = lineNumber;
+
+						while (p21 >= p23 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
+						{
+							if (*p21 == '\n')
+							{
+								lineNumber--;
+							}
+							p21--;
+						}
+
+						if (p21 >= p23)
+						{
+							//----查找变量名----
+							var.varName.end = p21;
+							var.varName.fileOffsetOfEnd = var.varName.end - p11;
+							var.varName.lineNumberOfEnd = lineNumber;
+
+							p22 = p21;
+
+							while (p21 >= p23)
+							{
+								if (!((*p21 >= '0' && *p21 <= '9')
+									|| (*p21 >= 'a' && *p21 <= 'z')
+									|| (*p21 >= 'A' && *p21 <= 'Z')
+									|| (*p21 == '_')
+									)) //C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+								{
+									break;
+								}
+								p21--;
+							}
+
+							if (p21 >= p23 && p21 < p22)
+							{
+								var.varName.start = p21 + 1;
+								var.varName.fileOffsetOfStart = var.varName.start - p11;
+								var.varName.lineNumberOfStart = lineNumber;
+								var.varName.length = var.varName.end - var.varName.start + 1;
+
+								var.varName.copyStrFromBuffer();
+
+								//-------继续查找变量类型名----------
+								while (p21 >= p23 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
+								{
+									if (*p21 == '\n')
+									{
+										lineNumber--;
+									}
+									p21--;
+								}
+
+								if (p21 >= p23)
+								{
+									var.varType.end = p21;
+									var.varType.fileOffsetOfEnd = var.varType.end - p11;
+									var.varType.lineNumberOfEnd = lineNumber;
+
+									p21 = p23;
+									lineNumber = lineNumberTemp;
+
+									while (p21 >= p23 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
+									{
+										if (*p21 == '\n')
+										{
+											lineNumber++;
+										}
+										p21++;
+									}
+
+									if (p21 <= var.varType.end)
+									{
+										var.varType.start = p21;
+										var.varType.fileOffsetOfStart = var.varType.start - p11;
+										var.varType.lineNumberOfStart = lineNumber;
+										var.varType.length = var.varType.end - var.varType.start + 1;
+
+										var.varType.copyStrFromBuffer();
+
+										classes.memberVars.push_back(var);
+
+										p1 = p2; //更新 p1 的值
+									}
+								}
+							}
+						}
+					}
+					else
+					{
+						printf("%s(%d): WARN: not suppport like 'class A {int m_a = 0;};'\n", __FUNCTION__, __LINE__);
+					}
+				}
+			}
+		}
+		
+		if (*p2 == '\n')
+		{
+			lineNumber++;
+		}
+
+		p2++;
+	}
+
+	return ret;
+}
+
+
+bool CFuncRoute::isFunctionArgsMatch(std::string parameter, std::string functionArgs)
+{
+	const char * str1 = parameter.c_str();
+	const char * str2 = functionArgs.c_str();
+
+	int commaCnt1 = 0; //逗号
+	int commaCnt2 = 0; //逗号
+
+	for (int i = 0; i < strlen(str1); ++i)
+	{
+		if (*str1 == ',')
+		{
+			commaCnt1++;
+		}
+	}
+
+	for (int i = 0; i < strlen(str2); ++i)
+	{
+		if (*str2 == ',')
+		{
+			commaCnt2++;
+		}
+	}
+
+	if (commaCnt1 == commaCnt2) //FIXME: 目前只简单的比较函数参数列表的逗号个数是否相等
+	{
+		return true;
+	}
+
+	return false;
+}
+
+
 int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 {
 	int ret = 0;
@@ -1650,6 +2047,7 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			std::string funcMe = vFunctions[i].funcs[j].functionName.str;
 			std::string classMe = vFunctions[i].funcs[j].className;
 			std::string classMe2 = vFunctions[i].funcs[j].classNameAlias;
+			std::string parameter = vFunctions[i].funcs[j].functionParameter.str;
 
 			size_t pos = funcMe.rfind("::");
 			if (pos != std::string::npos)
@@ -1669,12 +2067,14 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 						{
 							std::string funcWhichCalledMe = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionName.str;
 							std::string classWhichCalledMe = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].className.str;
+							std::string functionArgs = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionArgs.str;
 							
 							if (funcWhichCalledMe == funcMe
-								// && classMe2 == classWhichCalledMe //FIXME: 严格来讲，类名也需要比较，因为不同的类有可能使用同一个函数名
+								&& (classMe == classWhichCalledMe || classMe2 == classWhichCalledMe) //FIXME: 严格来讲，类名也需要比较，因为不同的类有可能使用同一个函数名
+								&& isFunctionArgsMatch(parameter, functionArgs)
 								) //说明被这个函数调用了
 							{
-//								if (vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionIndex == 0) //FIXME
+								if (vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionIndex == 0) //FIXME
 								{
 									vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionIndex = vFunctions[i].funcs[j].functionIndex;
 								}

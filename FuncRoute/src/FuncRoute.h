@@ -57,7 +57,7 @@ typedef struct _VAR_DECLARE_
 {
 	STRING_POSITON varType; //变量类型
 	STRING_POSITON varName; //变量名
-	int functionIndex; //变量编号，全局唯一
+	int varIndex; //变量编号
 }VAR_DECLARE;
 
 
@@ -79,21 +79,24 @@ typedef struct _FUNCTION_STRUCTURE_
 }FUNCTION_STRUCTURE;
 
 
-typedef struct _FUNCTIONS_
-{
-	unsigned char fllename[600]; //所在文件名
-	std::vector<FUNCTION_STRUCTURE> funcs;
-}FUNCTIONS;
-
-
 typedef struct _CLASS_STRUCT_
 {
 	STRING_POSITON className; //类/结构体名
 	STRING_POSITON classNameAlias; //类/结构体的别名
 	STRING_POSITON classBody; //类的体
 	STRING_POSITON classParent; //父类
+	std::vector<VAR_DECLARE> memberVars; //成员变量
+	std::vector<FUNCTION_STRUCTURE> memberFunc; //成员函数
 	bool isStruct; //是否是结构体
 }CLASS_STRUCT;
+
+
+typedef struct _FUNCTIONS_
+{
+	unsigned char fllename[600]; //所在文件名
+	std::vector<FUNCTION_STRUCTURE> funcs;
+	std::vector<CLASS_STRUCT> classes; //存储本文件中声明了哪些C++类/结构体
+}FUNCTIONS;
 
 
 typedef struct _MACRO_
@@ -124,6 +127,8 @@ public:
 	int findAllMacros(std::vector<std::string> files, std::vector<MACRO> &macros); //从所有代码源文件中，找到所有的宏定义
 	int findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize, std::vector<CLASS_INSTANCE> &funcsWhichInFunctionBody, unsigned char *bufferBase, int lineNumberBase); //查找函数体内部调用的所有其他函数
 	int macroExpand(); //将宏定义展开
+	int findAllMemberVarsInClassDeclare(unsigned char *buffer, int bufferSize, CLASS_STRUCT &classes, unsigned char *bufferBase, int lineNumberBase); //在类/结构体的声明语句块内部，提取出所有声明的成员变量
+	bool isFunctionArgsMatch(std::string parameter, std::string functionArgs); //函数的声明的参数列表和函数的调用传入的参数列表是否匹配
 	int statAllFuns(std::vector<FUNCTIONS> &vFunctions); //统计所有函数之间的调用关系
 };
 

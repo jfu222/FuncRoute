@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
 //	suffixes.push_back("*");
 
 	ret = fr.findAllFunctionsName(filePath, suffixes);
-
+	
 	printf("fr.findAllFunctionsName(): ret=%d;\n", ret);
 
 	return 0;
