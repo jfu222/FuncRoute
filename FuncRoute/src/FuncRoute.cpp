@@ -216,6 +216,10 @@ int CFuncRoute::search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSi
 	//------先将被注释掉的代码用空格' '代替（行号符'\n'保留）--------
 	ret = replaceAllCodeCommentsBySpace(buffer2, bufferSize);
 	RETURN_IF_FAILED(ret, -2);
+	
+	//------将所有用双引号""的代码用空格' '代替--------
+	ret = replaceAllStrBySpace(buffer2, bufferSize);
+	RETURN_IF_FAILED(ret, -2);
 
 	//------查找所有的C++类名(关键字class, struct)--------
 	char classKeyword[] = "class";
@@ -761,9 +765,10 @@ retry2:
 				if (*p21 == '{' //可能函数体在C++类的内部
 					|| *p21 == '}' //可能是上一个函数结束的位置
 					|| *p21 == ';' //语句结束
-					|| *p21 == '）' //类似 #pragma comment(lib, "user32.lib")
+					|| *p21 == ')' //类似 #pragma comment(lib, "user32.lib")
 					|| *p21 == '\\' //类似 '#define  MACRO_A \'
 					|| *p21 == ':' //类似 class A { public: A(){} };
+					|| *p21 == '"' //类似 '#include "FuncRoute.h" int main() { return 0; };'
 					)
 				{
 					overSerach = 1; //停止搜索
@@ -1027,7 +1032,7 @@ int  CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int buffer
 	unsigned char *p3 = buffer + bufferSize - 1;
 	unsigned char *p21 = NULL;
 
-	//------先将被注释掉的代码用空格' '代替（行号符'\n'保留）--------
+	//------先将被注释掉的代码用空格' '代替（换行号符'\n'保留）--------
 	while (p2 <= p3)
 	{
 		if (*p2 == '/') //被斜线(oblique line)"/"注释掉的字符串
@@ -1083,6 +1088,92 @@ int  CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int buffer
 		p2++;
 	}
 
+	return 0;
+}
+
+
+int  CFuncRoute::replaceAllStrBySpace(unsigned char *buffer, int bufferSize)
+{
+	int ret = 0;
+	
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = NULL;
+
+	//------先将两个连续的反斜杠"\\"用空格' '代替--------
+	while (p2 <= p3 - 1)
+	{
+		if (*p2 == '\\' && *(p2 + 1) == '\\') //两个连续的"\\"
+		{
+			*p2 = ' ';
+			p2++;
+			*p2 = ' ';
+		}
+		p2++;
+	}
+	
+	//------再将反斜杠"\w"转义字符用空格' '代替--------
+	p2 = p1;
+	while (p2 <= p3 - 1)
+	{
+		if (*p2 == '\\' && (*(p2 + 1) == '"' || *(p2 + 1) == '\''))
+		{
+			*p2 = ' ';
+			p2++;
+			*p2 = ' ';
+		}
+		p2++;
+	}
+	
+	//------将双引号引""起来的代码用空格' '代替（换行号符'\n'保留）--------
+	int flag = 0;
+	p2 = p1;
+	while (p2 <= p3)
+	{
+		if (*p2 == '"')
+		{
+			if(flag == 0)
+			{
+				flag = 1;
+				p21 = p2;
+			}else if(flag == 1)
+			{
+				flag = 0;
+				while (p21 <= p2)
+				{
+					*p21 = ' '; //用空格' '代替
+					p21++;
+				}
+			}
+		}
+		p2++;
+	}
+	
+	//------将单引号引'起来的代码用空格' '代替（换行号符'\n'保留）--------
+/*	flag = 0;
+	p2 = p1;
+	while (p2 <= p3)
+	{
+		if (*p2 == '\'')
+		{
+			if(flag == 0)
+			{
+				flag = 1;
+				p21 = p2;
+			}else if(flag == 1)
+			{
+				flag = 0;
+				while (p21 <= p2)
+				{
+					*p21 = ' '; //用空格' '代替
+					p21++;
+				}
+			}
+		}
+		p2++;
+	}
+*/
 	return 0;
 }
 
