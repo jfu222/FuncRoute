@@ -114,6 +114,8 @@ B::~B()
 unsigned int //这是单行注释，返回值单独一行
 B::get2(int &a)
 {
+	A classA2;
+	unsigned long long *  ret1 = classA2.set(23, 642);
 	int ret = m_st_aaaa.set_ABC();
 	return -1;
 }
@@ -145,6 +147,16 @@ int B::init()
 	return -2;
 }
 
+class C : public B, public A
+{
+public:
+	int m_c;
+
+public:
+	C(){}
+	~C(){}
+};
+
 /*
 这是多行注释
 这是多行注释
@@ -169,7 +181,7 @@ int main(int argc, char *argv[])
 	}
 
 	ret = classB.set(1); //测试"."调用函数
-	unsigned long long * ret2 = classB.set(2, 34); //测试"."调用函数
+	unsigned long long * ret2 = classB. set (2, 34); //测试"."调用函数
 	if (ret != 0)
 	{
 		printf("%s: Error: ret=%d;\n", __FUNCTION__, ret);

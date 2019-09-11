@@ -6,6 +6,12 @@
 #include <map>
 
 
+typedef struct _MY_STRING_
+{
+	char str[256]; //字符串
+}MY_STRING;
+
+
 typedef struct _STRING_POSITON_
 {
 	unsigned char *start;
@@ -85,6 +91,7 @@ typedef struct _CLASS_STRUCT_
 	STRING_POSITON classNameAlias; //类/结构体的别名
 	STRING_POSITON classBody; //类的体
 	STRING_POSITON classParent; //父类
+	std::vector<MY_STRING> classParents; //父类们（可以包含父类的父类），例如："class B : public A, public C{};"
 	std::vector<VAR_DECLARE> memberVars; //成员变量
 	std::vector<FUNCTION_STRUCTURE> memberFunc; //成员函数
 	bool isStruct; //是否是结构体
@@ -127,6 +134,9 @@ public:
 	int findAllMacros(std::vector<std::string> files, std::vector<MACRO> &macros); //从所有代码源文件中，找到所有的宏定义
 	int findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize, std::vector<CLASS_INSTANCE> &funcsWhichInFunctionBody, unsigned char *bufferBase, int lineNumberBase); //查找函数体内部调用的所有其他函数
 	int macroExpand(); //将宏定义展开
+	bool isParentClass(std::string child, std::string parent, std::vector<FUNCTIONS> &vFunctions); //判断parent类是否是child的父类
+	int splitParentsClass(unsigned char *buffer, int bufferSize, std::vector<MY_STRING> &classParents); //拆分父类们，例如："class B : public A, public C{};"
+	int updateParentClass(std::vector<FUNCTIONS> &vFunctions); //主要解决两层以上的父类继承
 	int findAllMemberVarsInClassDeclare(unsigned char *buffer, int bufferSize, CLASS_STRUCT &classes, unsigned char *bufferBase, int lineNumberBase); //在类/结构体的声明语句块内部，提取出所有声明的成员变量
 	bool isFunctionArgsMatch(std::string parameter, std::string functionArgs); //函数的声明的参数列表和函数的调用传入的参数列表是否匹配
 	int statAllFuns(std::vector<FUNCTIONS> &vFunctions); //统计所有函数之间的调用关系

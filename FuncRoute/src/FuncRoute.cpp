@@ -185,10 +185,8 @@ int CFuncRoute::search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSi
 	char scopeResolutionOperator[] = "::"; //C++ 作用域限定符
 	char varName[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"; //C++ 变量命名规则，数字 + 字母 + 下划线
 
-	FUNCTIONS funcs;
 	FUNCTION_STRUCTURE funcStruct;
 
-	memset(&funcs, 0, sizeof(FUNCTIONS));
 	memset(&funcStruct, 0, sizeof(FUNCTION_STRUCTURE));
 
 	unsigned char *buffer2 = (unsigned char *)malloc(bufferSize);
@@ -298,7 +296,7 @@ int CFuncRoute::search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSi
 
 							if (p21 <= p3)
 							{
-								if (*p21 == ':') //说明继承自父类，类似 class B : public A{};
+								if (*p21 == ':') //说明继承自父类，类似："class B : public A, public C{};"
 								{
 									p22 = p21;
 									lineNumberTemp = lineNumber;
@@ -320,6 +318,9 @@ int CFuncRoute::search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSi
 										cs.classParent.lineNumberOfEnd = lineNumber;
 										cs.classParent.length = cs.classParent.end - cs.classParent.start + 1;
 										cs.classParent.copyStrFromBuffer();
+
+										//-------拆分父类："class B : public A, public C{};"------------
+										ret = splitParentsClass(cs.classParent.start, cs.classParent.length, cs.classParents);
 									}
 								}
 
@@ -968,14 +969,12 @@ retry3:
 		}
 
 		//------将结果保存起来----------
-		funcs.funcs.push_back(funcStruct);
+		functions.funcs.push_back(funcStruct);
 	}
 
 end:
 	//----------------
 	if (buffer2){ free(buffer2); buffer2 = NULL; }
-
-	functions = funcs;
 
 	return 0;
 }
@@ -1314,11 +1313,11 @@ int CFuncRoute::findAllMacros(std::vector<std::string> files, std::vector<MACRO>
 									break;
 								}
 							}
-							else
+							else //像 "#define __C_KEYWORD_H__" 也是合法的
 							{
-								ret = -6;
-								printf("%s(%d): %s: Error: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
-								break;
+								ret = 0;
+								printf("%s(%d): %s: Warn: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
+//								break;
 							}
 						}else
 						{
@@ -1334,11 +1333,11 @@ int CFuncRoute::findAllMacros(std::vector<std::string> files, std::vector<MACRO>
 						break;
 					}
 				}
-				else
+				else //像 char define[] = "#define"; 也是合法的
 				{
-					ret = -6;
-					printf("%s(%d): %s: Error: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
-					break;
+					ret = 0;
+					printf("%s(%d): %s: Warn: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
+//					break;
 				}
 			}
 			p2++;
@@ -1365,9 +1364,11 @@ int CFuncRoute::findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize
 	unsigned char *p3 = buffer + bufferSize - 1;
 	unsigned char *p21 = NULL;
 	unsigned char *p22 = NULL;
+	unsigned char *p23 = NULL;
 	int lineNumber = lineNumberBase;
 	int lineNumberTemp = lineNumber;
 	bool ret2 = false;
+	int pointerClassFlag = 0;
 
 	//--------查找函数体内部调用了哪些其他函数---------------
 retry:
@@ -1412,6 +1413,11 @@ retry:
 					{
 						break;
 					}
+
+					if (*p21 == '\n')
+					{
+						lineNumber--;
+					}
 					p21--;
 				}
 
@@ -1434,8 +1440,7 @@ retry:
 						{
 							lineNumber++;
 						}
-						p1 = p2 + 1; //更新 p1 的值
-						p2 = p1; //更新 p2 的值
+//						p1 = p2 + 1; //更新 p1 的值
 						goto retry;
 					}
 
@@ -1459,6 +1464,7 @@ retry:
 							{
 								if (p21 - 1 > p1 && *(p21 - 1) == '-')
 								{
+									pointerClassFlag = 1;
 									p21--;
 								}
 								else //箭头"->"中的"-"和">"之间不能有任何其他字符
@@ -1523,6 +1529,7 @@ retry:
 												p22 = p21;
 												pTemp = p21;
 
+												int equalSignFlag = 0;
 												while (p21 >= p1)
 												{
 													if (((*p21 >= '0' && *p21 <= '9')
@@ -1531,6 +1538,11 @@ retry:
 														|| (*p21 == '_')
 														)) //C++ 函数名和变量命名规则，数字 + 字母 + 下划线
 													{
+														break;
+													}
+													else if (*p21 == '=') //找到含有等号的语句 ret = classB.set(1); 了，但并不是类的声明语句
+													{
+														equalSignFlag = 1;
 														break;
 													}
 
@@ -1542,27 +1554,33 @@ retry:
 													p21--;
 												}
 
-												if (p21 > p1 && p21 < p22) //变量名和类类型之间必须至少有一个非数字字母下划线字符，例如： A *a = new A(); A b(); A &c = d; std::vector<int>e;
+												if (equalSignFlag == 1)
 												{
-													p22 += instance.classInstanceName.length + 1;
+													continue;
+												}
+
+												p23 = p22;
+												if (p21 > p1 && p21 < p23) //变量名和类类型之间必须至少有一个非数字字母下划线字符，例如： A *a = new A(); A b(); A &c = d; std::vector<int>e;
+												{
+													p23 += instance.classInstanceName.length + 1;
 													
-													while (p22 < instance.classInstanceName.start)
+													while (p23 < instance.classInstanceName.start)
 													{
-														if (*p22 == ';') //C++ 变量声明必须以一个分号';'结尾
+														if (*p23 == ';') //C++ 变量声明必须以一个分号';'结尾
 														{
+															p23--;
 															break;
 														}
-														if (*p22 == '\n')
+														if (*p23 == '\n')
 														{
-															lineNumber++;
+															//lineNumber++;
 														}
-														p22++;
+														p23++;
 													}
 
-													if (p22 < instance.classInstanceName.start) //说明这的确是一个函数体内部声明的变量
+													if (p23 < instance.classInstanceName.start) //说明这的确是一个函数体内部声明的变量
 													{
 														//------继续查找变量类型--------
-														p22 = p21;
 														while (p21 >= p1)
 														{
 															if (((*p21 == ';') //上一条语句结尾
@@ -1583,6 +1601,7 @@ retry:
 															p21--;
 														}
 
+														p21++;
 														if (p21 >= p1) //找到声明的类型了
 														{
 															while (p21 < instance.classInstanceName.start && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
@@ -1600,8 +1619,8 @@ retry:
 															instance.className.lineNumberOfStart = lineNumber;
 
 															instance.className.end = p22;
-															instance.className.fileOffsetOfStart = instance.className.end - p11;
-															instance.className.lineNumberOfStart = lineNumber;
+															instance.className.fileOffsetOfEnd = instance.className.end - p11;
+															instance.className.lineNumberOfEnd = lineNumber;
 
 															instance.className.length = instance.className.end - instance.className.start + 1;
 															//instance.className.copyStrFromBuffer();
@@ -1617,6 +1636,11 @@ retry:
 																}
 																else
 																{
+																	if (pointerClassFlag == 1 && *p21 == '*')
+																	{
+																		break;
+																	}
+
 																	if (pos < sizeof(instance.className.str) - 2)
 																	{
 																		if (whiteSpaceFlag == 1)
@@ -1736,8 +1760,7 @@ retry:
 				funcsWhichInFunctionBody.push_back(instance);
 			}
 
-			p1 = p21; //更新 p1 的值
-			p2 = p1; //更新 p2 的值
+			p2 = p21; //更新 p2 的值
 		}
 		
 		if (*p2 == '\n')
@@ -1757,6 +1780,195 @@ end:
 int CFuncRoute::macroExpand()
 {
 	int ret = 0;
+
+	return ret;
+}
+
+
+bool CFuncRoute::isParentClass(std::string child, std::string parent, std::vector<FUNCTIONS> &vFunctions)
+{
+	//-------判断parent类是否是child的父类-----------
+	int len1 = vFunctions.size();
+
+	for (int i = 0; i < len1; ++i)
+	{
+		int len2 = vFunctions[i].classes.size();
+		for (int j = 0; j < len2; ++j)
+		{
+			std::string className = vFunctions[i].classes[j].className.str;
+			if (className == child) //先找到child对应的位置
+			{
+				int len3 = vFunctions[i].classes[j].classParents.size();
+				for (int k = 0; k < len3; ++k)
+				{
+					std::string classParent = vFunctions[i].classes[j].classParents[k].str;
+					if (classParent == parent) //说明parent是child的父类
+					{
+						return true;
+					}
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
+
+int CFuncRoute::updateParentClass(std::vector<FUNCTIONS> &vFunctions)
+{
+	int ret = 0;
+
+	//-------更新C++类的父类------------
+	int len1 = vFunctions.size();
+
+	for (int i = 0; i < len1; ++i)
+	{
+		int len2 = vFunctions[i].classes.size();
+		for (int j = 0; j < len2; ++j)
+		{
+			int len3 = vFunctions[i].classes[j].classParents.size();
+
+			for (int k = 0; k < len3; ++k)
+			{
+				std::string className1 = vFunctions[i].classes[j].classParents[k].str;
+
+				//------------------------------------
+				for (int i2 = 0; i2 < len1; ++i2)
+				{
+					int len22 = vFunctions[i2].classes.size();
+					for (int j2 = 0; j2 < len22; ++j2)
+					{
+						std::string className2 = vFunctions[i2].classes[j2].className.str;
+
+						if (i != i2 && j != j2 && className1 == className2) //确保是同一个C++类名
+						{
+							int len4 = vFunctions[i2].classes[j2].classParents.size();
+							for (int k2 = 0; k2 < len4; ++k2)
+							{
+								std::string className21 = vFunctions[i2].classes[j2].classParents[k2].str;
+
+								int flag = 0;
+								int len32 = vFunctions[i].classes[j].classParents.size();
+								for (int k3 = 0; k3 < len32; ++k3)
+								{
+									std::string className11 = vFunctions[i].classes[j].classParents[k3].str;
+									if (className21 == className11) //出现 "class A1 ： public B1, public C1{};" 和 "class A2 ： public B2, public C1{};" 共同的父类 "public C1"，则跳过
+									{
+										flag = 1;
+										break;
+									}
+								}
+
+								if (flag == 0)
+								{
+									vFunctions[i].classes[j].classParents.push_back(vFunctions[i2].classes[j2].classParents[k2]);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return ret;
+}
+
+
+int CFuncRoute::splitParentsClass(unsigned char *buffer, int bufferSize, std::vector<MY_STRING> &classParents)
+{
+	int ret = 0;
+
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = NULL;
+	unsigned char *p22 = NULL;
+
+	char publicClass[] = "public";
+	char protectedClass[] = "protected";
+	char privateClass[] = "private";
+
+	while (p2 <= p3)
+	{
+		p1 = p2;
+		while (p2 < p3 && *p2 != ',') //类之间用逗号隔开的，"class B : public A, public C{};"
+		{
+			*p2++;
+		}
+
+		if (p2 <= p3)
+		{
+			p21 = p1;
+
+			while (p21 <= p2 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
+			{
+				p21++;
+			}
+
+			if (p21 <= p2)
+			{
+				//------跳过修饰C++类的关键字"public/protected/private"--------
+				if (memcmp(p21, publicClass, strlen(publicClass)) == 0)
+				{
+					p21 += strlen(publicClass);
+				}
+				else if (memcmp(p21, protectedClass, strlen(protectedClass)) == 0)
+				{
+					p21 += strlen(protectedClass);
+				}
+				else if (memcmp(p21, privateClass, strlen(privateClass)) == 0)
+				{
+					p21 += strlen(privateClass);
+				}
+				else
+				{
+					ret = -1;
+					printf("%s(%d): not in [public, protected, private]; ret=%d;\n", __FUNCTION__, __LINE__, ret);
+					break;
+				}
+
+				if (p21 <= p2)
+				{
+					while (p21 <= p2 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
+					{
+						p21++;
+					}
+
+					//----------查找父类名-------------
+					p22 = p21;
+
+					while (p21 <= p2)
+					{
+						if (!((*p21 >= '0' && *p21 <= '9')
+							|| (*p21 >= 'a' && *p21 <= 'z')
+							|| (*p21 >= 'A' && *p21 <= 'Z')
+							|| (*p21 == '_')
+							)) //C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+						{
+							break;
+						}
+						p21++;
+					}
+
+					if (p21 <= p2 && p21 > p22)
+					{
+						MY_STRING myStrParentClass;
+						memset(&myStrParentClass, 0, sizeof(MY_STRING));
+
+						int len = MIN(p21 - p22, sizeof(myStrParentClass.str) - 1);
+						memcpy(myStrParentClass.str, p22, len);
+						myStrParentClass.str[len] = '\0';
+
+						classParents.push_back(myStrParentClass);
+					}
+				}
+			}
+		}
+
+		p2++;
+	}
 
 	return ret;
 }
@@ -1997,7 +2209,7 @@ bool CFuncRoute::isFunctionArgsMatch(std::string parameter, std::string function
 
 	for (int i = 0; i < strlen(str1); ++i)
 	{
-		if (*str1 == ',')
+		if (str1[i] == ',')
 		{
 			commaCnt1++;
 		}
@@ -2005,7 +2217,7 @@ bool CFuncRoute::isFunctionArgsMatch(std::string parameter, std::string function
 
 	for (int i = 0; i < strlen(str2); ++i)
 	{
-		if (*str2 == ',')
+		if (str2[i] == ',')
 		{
 			commaCnt2++;
 		}
@@ -2036,44 +2248,62 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			vFunctions[i].funcs[j].functionIndex = funcCnt++;
 		}
 	}
-	
+
+	//-------更新父类的父类------------
+	ret = updateParentClass(vFunctions);
+
 	//-------更新函数体中C++类变量的类型------------
 	for (int i = 0; i < len1; ++i)
 	{
-		int len3 = vFunctions[i].classes.size();
-		for (int j = 0; j < len3; ++j)
+		int len2 = vFunctions[i].funcs.size();
+		for (int j = 0; j < len2; ++j)
 		{
-			//-------------------
-			for (int i2 = 0; i2 < len1; ++i2)
+			int len3 = vFunctions[i].funcs[j].funcsWhichInFunctionBody.size();
+			for (int k = 0; k < len3; ++k)
 			{
-				int len2 = vFunctions[i2].funcs.size();
-				for (int j2 = 0; j2 < len2; ++j2)
-				{
-					std::string className1 = vFunctions[i2].funcs[j2].className;
-					std::string className2 = vFunctions[i].classes[j].className.str;
+				std::string classInstanceName1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].classInstanceName.str;
+				std::string className1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str;
+				std::string className12 = vFunctions[i].funcs[j].className;
+				std::string classNameAlias12 = vFunctions[i].funcs[j].classNameAlias;
 
-					if(className1 == className2) //确保是同一个C++类名
+				if (className1 == "") //实例没有填充类名的情况下，才遍历查找
+				{
+					for (int i2 = 0; i2 < len1; ++i2)
 					{
-						int len4 = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody.size();
-						for (int k2 = 0; k2 < len4; ++k2)
+						int len4 = vFunctions[i2].classes.size();
+						for (int j2 = 0; j2 < len4; ++j2)
 						{
-							if(strlen(vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k2].className.str) == 0)
+							int len4 = vFunctions[i2].classes[j2].memberVars.size();
+							for (int m2 = 0; m2 < len4; ++m2)
 							{
-								int len5 = vFunctions[i].classes[j].memberVars.size();
-								for (int m2 = 0; m2 < len5; ++m2)
+								std::string varName = vFunctions[i2].classes[j2].memberVars[m2].varName.str;
+								std::string className41 = vFunctions[i2].classes[j2].className.str;
+
+								if (varName == classInstanceName1) //C++类的成员变量和成员函数体中的某个变量相等了
 								{
-									int len61 = strlen(vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k2].classInstanceName.str);
-									int len62 = strlen(vFunctions[i].classes[j].memberVars[m2].varName.str);
-									if(len61 == len62 
-										&& memcmp(vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k2].classInstanceName.str, vFunctions[i].classes[j].memberVars[m2].varName.str, len61) == 0
-										) //C++类的成员变量和成员函数体中的某个变量相等了
+									//--------尝试查找变量是否在本类或者父类中声明的，如果不是，则可能是全局变量----------------
+									int flag = 0;
+
+									if (className41 == className12)
 									{
-										int len63 = strlen(vFunctions[i].classes[j].memberVars[m2].varType.str);
-										int len64 = MIN(len63, sizeof(vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k2].className.str) - 1);
-										if(len64 > 0)
+										flag = 1;
+									}
+									else //再判断className12的父类中是否包含className41类
+									{
+										bool isParent = isParentClass(className12, className41, vFunctions);
+										if (isParent == true)
 										{
-											memcpy(vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k2].className.str, vFunctions[i].classes[j].memberVars[m2].varType.str, len64);
+											flag = 1;
 										}
+									}
+
+									//------------------------
+									if (flag == 1)
+									{
+										int len63 = strlen(vFunctions[i2].classes[j2].memberVars[m2].varType.str);
+										int len64 = MIN(len63, sizeof(vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str) - 1);
+
+										memcpy(vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str, vFunctions[i2].classes[j2].memberVars[m2].varType.str, len64);
 									}
 								}
 							}
@@ -2091,47 +2321,54 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 
 		for (int j = 0; j < len2; ++j)
 		{
-			std::string funcMe = vFunctions[i].funcs[j].functionName.str;
-			std::string classMe = vFunctions[i].funcs[j].className;
-			std::string classMe2 = vFunctions[i].funcs[j].classNameAlias;
-			std::string parameter = vFunctions[i].funcs[j].functionParameter.str;
+			int len3 = vFunctions[i].funcs[j].funcsWhichInFunctionBody.size();
 
-			size_t pos = funcMe.rfind("::");
-			if (pos != std::string::npos)
+			for (int k = 0; k < len3; ++k)
 			{
-				funcMe = funcMe.substr(pos + 2);
-			}
+				std::string functionName1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionName.str;
+				std::string className1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str;
+				std::string functionArgs1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionArgs.str;
 
-			//-------在其他函数中遍历查找----------------
-			for (int i2 = 0; i2 < len1; ++i2)
-			{
-				for (int j2 = 0; j2 < len2; ++j2)
+				//-------在其他函数中遍历查找----------------
+				for (int i2 = 0; i2 < len1; ++i2)
 				{
-					if (!(i2 == i && j2 == j))
+					int len22 = vFunctions[i2].funcs.size();
+					for (int j2 = 0; j2 < len22; ++j2)
 					{
-						int len3 = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody.size();
-						for (int k = 0; k < len3; ++k)
+						if (j == 14 && k == 3)
 						{
-							std::string funcWhichCalledMe = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionName.str;
-							std::string classWhichCalledMe = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].className.str;
-							std::string functionArgs = vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionArgs.str;
-							
-							if (funcWhichCalledMe == funcMe 
-								&& isFunctionArgsMatch(parameter, functionArgs)
-								) //说明被这个函数调用了
+							int a = 1;
+						}
+						std::string functionName2 = vFunctions[i2].funcs[j2].functionName.str;
+						std::string className2 = vFunctions[i2].funcs[j2].className;
+						std::string classNameAlias21 = vFunctions[i2].funcs[j2].classNameAlias;
+						std::string functionParameter2 = vFunctions[i2].funcs[j2].functionParameter.str;
+
+						size_t pos = functionName2.rfind("::");
+						if (pos != std::string::npos)
+						{
+							functionName2 = functionName2.substr(pos + 2);
+						}
+
+						if (functionName2 == functionName1
+							&& isFunctionArgsMatch(functionParameter2, functionArgs1)
+							) //说明被这个函数调用了
+						{
+							bool isParent = isParentClass(className1, className2, vFunctions);
+
+							if ((className1 != "" && className2 != "" && (className1 == className2) || isParent == true)
+								|| (className1 != "" && classNameAlias21 != "" && className1 == classNameAlias21)
+								|| (className1 == "" && className2 == "" && classNameAlias21 == "")
+								)
 							{
-								if((classWhichCalledMe != "" && classMe != "" && classWhichCalledMe == classMe)
-									|| (classWhichCalledMe != "" && classMe2 != "" && classWhichCalledMe == classMe2)
-									|| (classWhichCalledMe == "" && classMe == "" && classMe2 == "")
-									)
+								if (vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionIndex == 0
+									|| className1 == className2
+									) //FIXME
 								{
-									if (vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionIndex == 0) //FIXME
-									{
-										vFunctions[i2].funcs[j2].funcsWhichInFunctionBody[k].functionIndex = vFunctions[i].funcs[j].functionIndex;
-									}
+									vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionIndex = vFunctions[i2].funcs[j2].functionIndex;
 								}
-//								vFunctions[i].funcs[j].funcsWhichCalledMe[vFunctions[i2].funcs[j2].functionIndex] += 1;
 							}
+//							vFunctions[i].funcs[j].funcsWhichCalledMe[vFunctions[i2].funcs[j2].functionIndex] += 1;
 						}
 					}
 				}
