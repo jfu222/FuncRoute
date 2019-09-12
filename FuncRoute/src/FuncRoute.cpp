@@ -433,8 +433,10 @@ int CFuncRoute::search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSi
 										//-------在类/结构体的声明语句块内部，提取出所有声明的成员变量---------
 										ret = findAllMemberVarsInClassDeclare(cs.classBody.start, cs.classBody.length, cs, p1, cs.classBody.lineNumberOfStart);
 
-										functions.classes.push_back(cs);
+										//-------在类/结构体的声明语句块内部，提取出所有声明的成员函数---------
+										ret = findAllMemberFuncsInClassDeclare(cs.classBody.start, cs.classBody.length, cs, p1, cs.classBody.lineNumberOfStart);
 
+										functions.classes.push_back(cs);
 										p2 = p21;
 									}
 								}
@@ -1740,7 +1742,7 @@ int CFuncRoute::findWholeFuncDeclare(unsigned char *buffer, int bufferSize, unsi
 
 	ret = findPairCharForward(p21, p3 - p21 + 1, p21, '(', ')', p21);
 	RETURN_IF_FAILED(ret, ret);
-
+	
 	funcDeclare.functionParameter.end = p21;
 	funcDeclare.functionParameter.fileOffsetOfEnd = p21 - p11;
 	funcDeclare.functionParameter.lineNumberOfEnd = lineNumber;
@@ -1769,10 +1771,14 @@ int CFuncRoute::findWholeFuncDeclare(unsigned char *buffer, int bufferSize, unsi
 	}
 
 	ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
-//	RETURN_IF_FAILED(ret, ret);
 	if (ret != 0) //类似 char * str = (char *)malloc(2);
 	{
 		return -1;
+	}
+	
+	if (p21 - 1 >= p1 && *(p21 - 1) == '~') //析构函数，类似 class A {public: ~A();};
+	{
+		p21--;
 	}
 
 	funcDeclare.functionName.start = p21;
@@ -1788,6 +1794,7 @@ int CFuncRoute::findWholeFuncDeclare(unsigned char *buffer, int bufferSize, unsi
 	}
 
 	//-------反向查找函数返回类型名------------
+	p21--;
 	ret = skipWhiteSpaceBack(p1, p21 - p1, p21, p21, lineNumber);
 	RETURN_IF_FAILED(ret, ret);
 
@@ -2196,6 +2203,12 @@ int CFuncRoute::replaceTwoMoreWhiteSpaceByOneSpace(unsigned char *buffer, int bu
 
 	p1[pos] = '\0';
 
+	return 0;
+}
+
+
+int CFuncRoute::macroExpand()
+{
 	return 0;
 }
 
@@ -2616,22 +2629,45 @@ int CFuncRoute::findAllMemberVarsInClassDeclare(unsigned char *buffer, int buffe
 
 int CFuncRoute::findAllMemberFuncsInClassDeclare(unsigned char *buffer, int bufferSize, CLASS_STRUCT &classes, unsigned char *bufferBase, int lineNumberBase)
 {
+	int ret = 0;
+
 	unsigned char *p1 = buffer;
-	unsigned char *p11 = bufferBase;
 	unsigned char *p2 = buffer;
 	unsigned char *p3 = buffer + bufferSize - 1;
 	unsigned char *p21 = NULL;
 	unsigned char *p22 = NULL;
-	unsigned char *p23 = NULL;
 	int lineNumber = lineNumberBase;
-	int lineNumberTemp = lineNumber;
 
+	p21 = p1;
 	while (p21 <= p3)
 	{
 		if (*p21 == '(')
 		{
+			FUNCTION_STRUCTURE fs;
+			memset(&fs, 0, sizeof(FUNCTION_STRUCTURE));
 
-			
+			ret = findWholeFuncDeclare(p1, p3 - p1 + 1, p21, fs, bufferBase, lineNumberBase);
+			if(ret == 0)
+			{
+				int len = MIN(strlen(classes.className.str), sizeof(fs.className) - 1);
+				if(len > 0)
+				{
+					memcpy(fs.className, classes.className.str, len);
+					fs.className[len] = '\0';
+				}
+				
+				len = MIN(strlen(classes.classNameAlias.str), sizeof(fs.classNameAlias) - 1);
+				if(len > 0)
+				{
+					memcpy(fs.classNameAlias, classes.classNameAlias.str, len);
+					fs.classNameAlias[len] = '\0';
+				}
+
+				classes.memberFuncs.push_back(fs);
+			}
+		}else if (*p21 == '{' && p21 != p1) //FIXME: 跳过函数定义块，但是也会跳过类中类
+		{
+			ret = findPairCharForward(p21, p3 - p21, p21, '{', '}', p21);
 		}
 
 		p21++;
@@ -2703,12 +2739,13 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			int len3 = vFunctions[i].funcs[j].funcsWhichInFunctionBody.size();
 			for (int k = 0; k < len3; ++k)
 			{
+				int flag = 0;
 				std::string classInstanceName1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].classInstanceName.str;
 				std::string className1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str;
 				std::string className12 = vFunctions[i].funcs[j].className;
 				std::string classNameAlias12 = vFunctions[i].funcs[j].classNameAlias;
-				std::string functionName1 = vFunctions[i].funcs[j].functionName.str;
-
+				std::string functionName1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionName.str;
+				
 				if (className1 == "") //实例没有填充类名的情况下，才遍历查找
 				{
 					for (int i2 = 0; i2 < len1; ++i2)
@@ -2716,6 +2753,7 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 						int len4 = vFunctions[i2].classes.size();
 						for (int j2 = 0; j2 < len4; ++j2)
 						{
+							//---先在成员变量中查找---
 							int len4 = vFunctions[i2].classes[j2].memberVars.size();
 							for (int m2 = 0; m2 < len4; ++m2)
 							{
@@ -2725,8 +2763,6 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 								if (varName == classInstanceName1) //C++类的成员变量和成员函数体中的某个变量相等了
 								{
 									//--------尝试查找变量是否在本类或者父类中声明的，如果不是，则可能是全局变量----------------
-									int flag = 0;
-
 									if (className41 == className12)
 									{
 										flag = 1;
@@ -2747,9 +2783,50 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 										int len64 = MIN(len63, sizeof(vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str) - 1);
 
 										memcpy(vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str, vFunctions[i2].classes[j2].memberVars[m2].varType.str, len64);
+										break;
 									}
 								}
 							}
+							
+							if (flag == 1)
+							{
+								break; //已经找到了，就不再继续找了
+							}
+
+							//---再在成员函数中查找---
+							if (functionName1 == "statAllFuns" && i == 0)
+							{
+								int a = 1;
+							}
+							int len5 = vFunctions[i2].classes[j2].memberFuncs.size();
+							for (int m2 = 0; m2 < len5; ++m2)
+							{
+							if (functionName1 == "statAllFuns")
+							{
+								if (i2 == 1 && j2 == 8 && m2 == 30)
+								{
+								int a = 1;
+								}
+							}
+								std::string functionName51 = vFunctions[i2].classes[j2].memberFuncs[m2].functionName.str;
+								std::string className52 = vFunctions[i2].classes[j2].memberFuncs[m2].className;
+								std::string classNameAlias53 = vFunctions[i2].classes[j2].memberFuncs[m2].classNameAlias;
+
+								if (functionName51 == functionName1) //C++类的成员函数和某个函数体中的某个函数名相等了
+								{
+									int len63 = strlen(vFunctions[i2].classes[j2].memberFuncs[m2].className);
+									int len64 = MIN(len63, sizeof(vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str) - 1);
+
+									memcpy(vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str, vFunctions[i2].classes[j2].memberFuncs[m2].className, len64);
+									flag = 1;
+									break;
+								}
+							}
+						}
+						
+						if (flag == 1)
+						{
+							break; //已经找到了，就不再继续找了
 						}
 					}
 				}
@@ -2778,7 +2855,7 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 					int len22 = vFunctions[i2].funcs.size();
 					for (int j2 = 0; j2 < len22; ++j2)
 					{
-						if (j == 14 && k == 3)
+						if (functionName1 == "statAllFuns" && i == 0 && j2 == 29)
 						{
 							int a = 1;
 						}

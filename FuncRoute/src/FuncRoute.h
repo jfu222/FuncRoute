@@ -222,8 +222,6 @@ typedef struct _FUNCTIONS_
 	std::vector<CLASS_STRUCT> classes; //存储本文件中声明了哪些C++类/结构体
 
 public:
-	_FUNCTIONS_(){}
-	~_FUNCTIONS_(){}
 	int printfInfo()
 	{
 		printf("-----FUNCTIONS---START---fllename=%s--\n", fllename);
