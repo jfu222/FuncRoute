@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <vector.h>
 
 #define CHECK_CUDA_ERROR_RETURN(err, msg)      if (err != CUDA_SUCCESS) { printf("error = %d\n", err); return -1; }
 
@@ -34,6 +35,14 @@ private:
 public:
 	int set_ABC()
 	{
+		std::vector<std::string> files;
+		std::vector<std::string> files2;
+
+		ret = get_nested_dir_files(filePath.c_str(), files);
+		RETURN_IF_FAILED(ret != 0, ret);
+
+		//---------------------------
+		int len1 = files.size();
 		return -2;
 	}
 }ST_AAAA;
