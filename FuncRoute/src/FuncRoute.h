@@ -26,11 +26,11 @@ typedef struct _STRING_POSITON_
 {
 	unsigned char *start;
 	unsigned char *end;
-	unsigned int fileOffsetOfStart;
-	unsigned int fileOffsetOfEnd;
-	unsigned int lineNumberOfStart;
-	unsigned int lineNumberOfEnd;
-	unsigned int length;
+	int fileOffsetOfStart;
+	int fileOffsetOfEnd;
+	int lineNumberOfStart;
+	int lineNumberOfEnd;
+	int length;
 	char str[1024];
 
 public:
@@ -287,20 +287,28 @@ public:
 	int replaceAllStrBySpace(unsigned char *buffer, int bufferSize); //将所有用双引号""的代码用空格' '代替
 	int findStr(unsigned char *buffer, int bufferSize, const char *str, int &pos); //在内存中，查找指定的字符串
 	int findAllMacros(std::vector<std::string> files, std::vector<MACRO> &macros); //从所有代码源文件中，找到所有的宏定义
+	int findAllClassAndStructDeclare(unsigned char *buffer, int bufferSize, std::vector<CLASS_STRUCT> &classes); //在内存中查找所有完整的C++类/结构体声明
 	int findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize, std::vector<CLASS_INSTANCE> &funcsWhichInFunctionBody, unsigned char *bufferBase, int lineNumberBase); //查找函数体内部调用的所有其他函数
 	int findWholeFuncCalled(unsigned char *buffer, int bufferSize, unsigned char *parentheseLeft, CLASS_INSTANCE &classInstance, unsigned char *bufferBase, int lineNumberBase); //给定左小括号'('的位置，返回一个完整的函数调用
 	int findWholeFuncDeclare(unsigned char *buffer, int bufferSize, unsigned char *parentheseLeft, FUNCTION_STRUCTURE &funcDeclare, unsigned char *bufferBase, int lineNumberBase); //给定左小括号'('的位置，返回一个完整的函数声明
 
 	int skipWhiteSpaceForward(unsigned char *buffer, int bufferSize, unsigned char *leftPos, unsigned char *&rightPos, int &lineNumber); //前向跳过空白字符
 	int skipWhiteSpaceBack(unsigned char *buffer, int bufferSize, unsigned char *rightPos, unsigned char *&leftPos, int &lineNumber); //反向跳过空白字符
-	int findPairCharForward(unsigned char *buffer, int bufferSize, unsigned char *leftCharPos, char leftChar, char rightChar, unsigned char *&rightCharPos); //前向查找配置字符，比如"{}","<>","()","[]","''"
-	int findPairCharBack(unsigned char *buffer, int bufferSize, unsigned char *rightCharPos, char leftChar, char rightChar, unsigned char *&leftCharPos); //反向查找配置字符，比如"{}","<>","()","[]","''"
-	int findStrForward(unsigned char *buffer, int bufferSize, unsigned char *leftPos, unsigned char *&rightPos); //前向查找配置字符串，C++ 函数名和变量命名规则，数字 + 字母 + 下划线
-	int findStrBack(unsigned char *buffer, int bufferSize, unsigned char *rightPos, unsigned char *&leftPos); //反向查找配置字符串，C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+	int findPairCharForward(unsigned char *buffer, int bufferSize, unsigned char *leftCharPos, char leftChar, char rightChar, unsigned char *&rightCharPos); //前向查找配对字符，比如"{}","<>","()","[]","''"
+	int findPairCharBack(unsigned char *buffer, int bufferSize, unsigned char *rightCharPos, char leftChar, char rightChar, unsigned char *&leftCharPos); //反向查找配对字符，比如"{}","<>","()","[]","''"
+	int findPairCharBackStop(unsigned char *buffer, int bufferSize, unsigned char *rightCharPos, char leftChar, char rightChar, char *stopChar, unsigned char *&leftCharPos); //反向查找配对字符，遇到停止符则返回失败，比如"{}","<>","()","[]","''"
+	int findCharForward(unsigned char *buffer, int bufferSize, char ch, unsigned char *&rightCharPos); //前向查找指定字符
+	int findCharBack(unsigned char *buffer, int bufferSize, char ch, unsigned char *&leftCharPos); //反向查找指定字符
+	int findCharBackStop(unsigned char *buffer, int bufferSize, char ch, char *stopChar, unsigned char *&leftCharPos); //反向查找指定字符，遇到停止符则返回失败
+	int findStrForward(unsigned char *buffer, int bufferSize, unsigned char *leftPos, unsigned char *&rightPos); //前向查找字符串，C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+	int findStrBack(unsigned char *buffer, int bufferSize, unsigned char *rightPos, unsigned char *&leftPos); //反向查找字符串，C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+	int findQueryStrBackStop(unsigned char *buffer, int bufferSize, unsigned char *rightPos, char *queryStr, char *stopChar, unsigned char *&leftPos); //反向查找指定字符串，遇到停止符则返回失败
 	int findVarDeclareForward(unsigned char *buffer, int bufferSize, std::string queryStr, std::string &varDeclareType); //前向查找变量声明的类型
 	int findVarDeclareBack(unsigned char *buffer, int bufferSize, std::string queryStr, std::string &varDeclareType); //反向查找变量声明的类型
 	bool isValidVarChar(char ch); //是否是一个有效的变量命名，C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+	bool isWhiteSpace(char ch); //是否是一个空白字符，' ', '\t', '\r', '\n'
 	int replaceTwoMoreWhiteSpaceByOneSpace(unsigned char *buffer, int bufferSize); //将多个连续的空白字符用一个空格代替
+	int statBufferLinesCount(unsigned char *buffer, int bufferSize); //统计给定内存中换行符'\n'的个数
 	
 	int macroExpand(); //将宏定义展开
 	bool isParentClass(std::string child, std::string parent, std::vector<FUNCTIONS> &vFunctions); //判断parent类是否是child的父类
