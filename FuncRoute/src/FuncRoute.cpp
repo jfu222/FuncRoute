@@ -255,21 +255,23 @@ retry:
 		memset(&funcStruct, 0, sizeof(FUNCTION_STRUCTURE));
 
 		//--------查找函数体左右大括号"{}"----------------
-		ret = findCharForward(p21, p3 - p21 + 1, '{', p21);
+		ret = findCharForward(p21, p3 - p21 + 1, '{', p22);
 		if (ret != 0)
 		{
 			break;
 		}
 
-		ret = findPairCharForward(p21, p3 - p21 + 1, p21, '{', '}', p22);
-		if (ret != 0)
-		{
-			break;
-		}
-
-		funcStruct.functionBody.start = p21;
+		lineNumber += statBufferLinesCount(p21, p22 - p21 + 1);
+		
+		funcStruct.functionBody.start = p22;
 		funcStruct.functionBody.fileOffsetOfStart = funcStruct.functionBody.start - p1;
 		funcStruct.functionBody.lineNumberOfStart = lineNumber;
+
+		ret = findPairCharForward(p22, p3 - p21 + 1, p22, '{', '}', p22);
+		if (ret != 0)
+		{
+			break;
+		}
 
 		funcStruct.functionBody.end = p22;
 		funcStruct.functionBody.fileOffsetOfEnd = funcStruct.functionBody.end - p1;
@@ -277,29 +279,23 @@ retry:
 		funcStruct.functionBody.lineNumberOfEnd = lineNumber;
 
 		//---检查大括号对语句块是否是宏定义----
-		p23 = p21;
-		ret = findCharBack(p1, p23 - p1 + 1, '\n', p23);
-
-		while (p23 < p21)
+		ret = findCharBackStop(p1, funcStruct.functionBody.start - p1 + 1, '\n', "#define ", p21);
+		if (ret != 0)
 		{
-			if (memcmp(p23, "#define ", 8) == 0)
-			{
-				p21 = funcStruct.functionBody.end + 1;
-				goto retry; //说明是单行宏定义，则重新查找
-			}
-			p23++;
+			goto retry4; //说明是单行宏定义，则重新查找
 		}
-
-		ret = findCharForward(p21, p22 - p21 + 1, '\\', p23);
-		if (ret == 0)
+		
+		p22 = funcStruct.functionBody.start;
+		ret = findCharForwardStop(p22, funcStruct.functionBody.end - p22 + 1, '\n', "\\", p21);
+		if (ret != 0)
 		{
-			p21 = funcStruct.functionBody.end + 1;
-			continue; //可能是类似 "#define AAAA \\ " 的声明，而不是函数定义，则跳过
+			goto retry4; //可能是类似 "#define AAAA \\ " 的声明，而不是函数定义，则跳过
 		}
 
 		//--------查找函数参数左右小括号对"()"----------------
 		p21 = funcStruct.functionBody.start - 1;
 
+		lineNumber = funcStruct.functionBody.lineNumberOfStart;
 		ret = skipWhiteSpaceBack(p1, funcStruct.functionBody.start - p21 + 1, p21, p21, lineNumber);
 		RETURN_IF_FAILED(ret, ret);
 
@@ -307,11 +303,10 @@ retry:
 		funcStruct.functionParameter.fileOffsetOfEnd = funcStruct.functionParameter.end - p1;
 		funcStruct.functionParameter.lineNumberOfEnd = lineNumber;
 
-		ret = findPairCharBackStop(p1, p21 - p1 + 1, p21, '(', ')', ";:{}", p21);
+		ret = findPairCharBackStop(p1, p21 - p1 + 1, p21, '(', ')', ";{}", p21);
 		if (ret != 0)
 		{
-			p21 = funcStruct.functionBody.start + 1;
-			continue; //可能是类似 "struct A {};" 的声明，而不是函数定义，则跳过
+			goto retry4; //可能是类似 "struct A {};" 的声明，而不是函数定义，则跳过
 		}
 
 		funcStruct.functionParameter.start = p21;
@@ -355,21 +350,29 @@ retry:
 		funcStruct.functionName.fileOffsetOfEnd = funcStruct.functionName.end - p1;
 		funcStruct.functionName.lineNumberOfEnd = lineNumber;
 
-		ret = findStrBack(p1, p21 - p1 + 1, p21, p22);
+		ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
 		RETURN_IF_FAILED(ret, ret);
 
 		//---反向尝试查找C++ 类作用域限定符"::"------
-		p23 = p22 - 1;
-		
-		ret = findQueryStrBackStop(p1, p23 - p1 + 1, p23, "::", ";{}()", p23); //类似 int A::B::get() { return 0; }
+		ret = findQueryStrBackStop(p1, p21 - p1 + 1, p21, "::", ";{}()", p21); //类似 int A::B::get() { return 0; }
+		if(ret == 0)
+		{
+			p21--;
 
-		ret = findCharBackStop(p1, p23 - p1 + 1, '~', ";{}()", p22); //尝试查找析构函数，类似 ~A::A(){}
+			ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
+			RETURN_IF_FAILED(ret, ret);
+
+			ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
+			RETURN_IF_FAILED(ret, ret);
+		}
+
+		ret = findCharBackStop(p1, p21 - p1 + 1, '~', ";{}()", p21); //尝试查找析构函数，类似 ~A::A(){}
 		if (ret == 0)
 		{
 			isDestructor = true;
 		}
 
-		funcStruct.functionName.start = p22;
+		funcStruct.functionName.start = p21;
 		funcStruct.functionName.fileOffsetOfStart = funcStruct.functionName.start - p1;
 		funcStruct.functionName.lineNumberOfStart = lineNumber;
 
@@ -377,14 +380,7 @@ retry:
 		ret2 = isKeyword(funcStruct.functionName.start, funcStruct.functionName.end - funcStruct.functionName.start + 1);
 		if (ret2) //函数名是C/C++语言关键词
 		{
-			lineNumber = funcStruct.functionBody.lineNumberOfEnd;
-			p21 = funcStruct.functionBody.end + 1;
-			if (*p21 == '\n')
-			{
-				lineNumber++;
-			}
-			p1 = p21; //更新 p1 的值
-			continue;
+			goto retry4;
 		}
 
 		//--------查找函返回值----------------
@@ -492,15 +488,6 @@ retry2:
 		funcStruct.functionReturnValue.copyStrFromBuffer();
 
 retry3:
-		//--------查找函数体内部调用了哪些其他函数---------------
-		ret = findAllFuncsInFunctionBody(funcStruct.functionBody.start, funcStruct.functionBody.length, funcStruct.funcsWhichInFunctionBody, p1, funcStruct.functionBody.lineNumberOfStart);
-		if (ret != 0)
-		{
-			ret = -8;
-			printf("%s(%d): %s: Error: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
-			break;
-		}
-
 		//--------查找到一个完整的函数----------------
 		funcStruct.functionReturnValue.length = (funcStruct.functionReturnValue.end && funcStruct.functionReturnValue.start) ? (funcStruct.functionReturnValue.end - funcStruct.functionReturnValue.start + 1) : 0;
 		funcStruct.functionName.length = (funcStruct.functionName.end && funcStruct.functionName.start) ? (funcStruct.functionName.end - funcStruct.functionName.start + 1) : 0;
@@ -557,6 +544,15 @@ retry3:
 			printf("%s(%d): %s: Error: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
 			break;
 		}
+		
+		//--------查找函数体内部调用了哪些其他函数---------------
+		ret = findAllFuncsInFunctionBody(funcStruct.functionBody.start, funcStruct.functionBody.length, funcStruct.funcsWhichInFunctionBody, p1, funcStruct.functionBody.lineNumberOfStart);
+		if (ret != 0)
+		{
+			ret = -8;
+			printf("%s(%d): %s: Error: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
+			break;
+		}
 
 		//------确定函数是哪一个C++类的成员函数-----------
 		for (int i = 0; i < functions.classes.size(); ++i)
@@ -610,9 +606,10 @@ retry3:
 		//------将结果保存起来----------
 		functions.funcs.push_back(funcStruct);
 
+retry4:
 		//-------继续下一轮循环---------------
-		lineNumber = funcStruct.functionBody.lineNumberOfEnd;
-		p21 = funcStruct.functionBody.end + 1;
+		lineNumber = funcStruct.functionBody.lineNumberOfStart;
+		p21 = funcStruct.functionBody.start + 1;
 		if (*p21 == '\n')
 		{
 			lineNumber++;
@@ -1848,6 +1845,40 @@ int CFuncRoute::findCharForward(unsigned char *buffer, int bufferSize, char ch, 
 }
 
 
+int CFuncRoute::findCharForwardStop(unsigned char *buffer, int bufferSize, char ch, char *stopChar, unsigned char *&rightCharPos)
+{
+	int ret = 0;
+
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = NULL;
+	int stopCharLen = strlen(stopChar);
+
+	p21 = p2;
+	while (p21 <= p3)
+	{
+		for (int i = 0; i < stopCharLen; ++i)
+		{
+			if (*p21 == stopChar[i]) //遇到停止字符，则返回失败
+			{
+				return -1;
+			}
+		}
+
+		if (*p21 == ch)
+		{
+			rightCharPos = p21;
+			return 0;
+		}
+
+		p21++;
+	}
+
+	return -1;
+}
+
+
 int CFuncRoute::findCharBack(unsigned char *buffer, int bufferSize, char ch, unsigned char *&leftCharPos)
 {
 	int ret = 0;
@@ -2000,7 +2031,7 @@ int CFuncRoute::findQueryStrBackStop(unsigned char *buffer, int bufferSize, unsi
 	int queryStrLen = strlen(queryStr);
 	int stopCharLen = strlen(stopChar);
 
-	p21 = rightPos - queryStrLen;
+	p21 = rightPos - queryStrLen + 1;
 	while (p21 >= p1)
 	{
 		for (int i = 0; i < stopCharLen; ++i)
@@ -2021,10 +2052,6 @@ int CFuncRoute::findQueryStrBackStop(unsigned char *buffer, int bufferSize, unsi
 			{
 				leftPos = p21 + 1;
 				return 0;
-			}
-			else
-			{
-				return -1;
 			}
 		}
 
@@ -2338,6 +2365,11 @@ int CFuncRoute::splitParentsClass(unsigned char *buffer, int bufferSize, std::ve
 
 		if (p2 <= p3)
 		{
+			if(*p2 == ',')
+			{
+				p2--;
+			}
+
 			p21 = p1;
 
 			while (p21 <= p2 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
@@ -2377,7 +2409,7 @@ int CFuncRoute::splitParentsClass(unsigned char *buffer, int bufferSize, std::ve
 					//----------查找父类名-------------
 					p22 = p21;
 
-					while (p21 <= p2)
+					while (p21 < p2)
 					{
 						if (!((*p21 >= '0' && *p21 <= '9')
 							|| (*p21 >= 'a' && *p21 <= 'z')
@@ -2390,12 +2422,12 @@ int CFuncRoute::splitParentsClass(unsigned char *buffer, int bufferSize, std::ve
 						p21++;
 					}
 
-					if (p21 <= p2 && p21 > p22)
+					if (p21 <= p2 && p21 >= p22)
 					{
 						MY_STRING myStrParentClass;
 						memset(&myStrParentClass, 0, sizeof(MY_STRING));
 
-						int len = MIN(p21 - p22, sizeof(myStrParentClass.str) - 1);
+						int len = MIN(p21 - p22 + 1, sizeof(myStrParentClass.str) - 1);
 						memcpy(myStrParentClass.str, p22, len);
 						myStrParentClass.str[len] = '\0';
 
@@ -2406,6 +2438,10 @@ int CFuncRoute::splitParentsClass(unsigned char *buffer, int bufferSize, std::ve
 		}
 
 		p2++;
+		if(*p2 == ',')
+		{
+			p2++;
+		}
 	}
 
 	return ret;
@@ -2768,6 +2804,7 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 							for (int m2 = 0; m2 < len4; ++m2)
 							{
 								std::string varName = vFunctions[i2].classes[j2].memberVars[m2].varName.str;
+								std::string varType = vFunctions[i2].classes[j2].memberVars[m2].varType.str;
 								std::string className41 = vFunctions[i2].classes[j2].className.str;
 
 								if (varName == classInstanceName1) //C++类的成员变量和成员函数体中的某个变量相等了
@@ -2793,6 +2830,7 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 										int len64 = MIN(len63, sizeof(vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str) - 1);
 
 										memcpy(vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str, vFunctions[i2].classes[j2].memberVars[m2].varType.str, len64);
+										vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str[len64] = '\0';
 										break;
 									}
 								}
@@ -2817,6 +2855,7 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 									int len64 = MIN(len63, sizeof(vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str) - 1);
 
 									memcpy(vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str, vFunctions[i2].classes[j2].memberFuncs[m2].className, len64);
+									vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str[len64] = '\0';
 									flag = 1;
 									break;
 								}
