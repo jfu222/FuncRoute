@@ -106,6 +106,7 @@ typedef struct _VAR_DECLARE_
 {
 	STRING_POSITON varType; //变量类型
 	STRING_POSITON varName; //变量名
+	bool isPointerVar; //是否是指针变量变量名
 	int varIndex; //变量编号
 
 public:
@@ -113,6 +114,7 @@ public:
 	{
 		printf("-----VAR_DECLARE----START--%d---\n", varIndex);
 		printf("varIndex: %d;\n", varIndex);
+		printf("isPointerVar: %d;\n", isPointerVar);
 		varType.printfInfo();
 		varName.printfInfo();
 		printf("-----VAR_DECLARE----END--%d---\n", varIndex);
@@ -278,7 +280,7 @@ public:
 public:
 	CFuncRoute();
 	~CFuncRoute();
-
+	
 	int findAllFunctionsName(std::string filePath, std::vector<std::string> suffixes); //从源代码文件里面，提取出所有函数名
 	int search_C_FuncName(unsigned char *buffer, unsigned int bufferSize, FUNCTIONS &functions); //从内存buffer中，搜索C语言函数名
 	int search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSize, FUNCTIONS &functions); //从内存buffer中，搜索C++语言函数名
@@ -300,9 +302,11 @@ public:
 	int findCharForward(unsigned char *buffer, int bufferSize, char ch, unsigned char *&rightCharPos); //前向查找指定字符
 	int findCharForwardStop(unsigned char *buffer, int bufferSize, char ch, char *stopChar, unsigned char *&rightCharPos); //前向查找指定字符，遇到停止符则返回失败
 	int findCharBack(unsigned char *buffer, int bufferSize, char ch, unsigned char *&leftCharPos); //反向查找指定字符
+	int findCharsBackGreedy(unsigned char *buffer, int bufferSize, char *chars, unsigned char *&leftCharPos); //反向查找指定的某几个字符，贪婪查找直到找到为止
 	int findCharBackStop(unsigned char *buffer, int bufferSize, char ch, char *stopChar, unsigned char *&leftCharPos); //反向查找指定字符，遇到停止符则返回失败
 	int findStrForward(unsigned char *buffer, int bufferSize, unsigned char *leftPos, unsigned char *&rightPos); //前向查找字符串，C++ 函数名和变量命名规则，数字 + 字母 + 下划线
 	int findStrBack(unsigned char *buffer, int bufferSize, unsigned char *rightPos, unsigned char *&leftPos); //反向查找字符串，C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+	int findStrCharsBackGreedy(unsigned char *buffer, int bufferSize, unsigned char *rightPos, char *chars, unsigned char *&leftPos); //反向查找字符串或者指定的字符，贪婪查找直到找到为止，C++ 函数名和变量命名规则，数字 + 字母 + 下划线
 	int findQueryStrBackStop(unsigned char *buffer, int bufferSize, unsigned char *rightPos, char *queryStr, char *stopChar, unsigned char *&leftPos); //反向查找指定字符串，遇到停止符则返回失败
 	int findVarDeclareForward(unsigned char *buffer, int bufferSize, std::string queryStr, std::string &varDeclareType); //前向查找变量声明的类型
 	int findVarDeclareBack(unsigned char *buffer, int bufferSize, std::string queryStr, std::string &varDeclareType); //反向查找变量声明的类型
