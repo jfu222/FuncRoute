@@ -107,6 +107,8 @@ int CFuncRoute::findAllFunctionsName(std::string filePath, std::vector<std::stri
 	//---------提取每个文件里面的函数定义-------------------
 	std::vector<FUNCTIONS> allFuncs;
 
+	printf("%s: ===========Total files number: %d;\n", __FUNCTION__, len3);
+
 	for (int i = 0; i < len3; ++i)
 	{
 		printf("%s: %s\n", __FUNCTION__, files2[i].c_str());
@@ -239,8 +241,12 @@ int CFuncRoute::search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSi
 	int structLen = strlen(structKeyword);
 	bool isStruct = false;
 	bool isDestructor = false; //是否是析构函数
+	bool isConstructor = false; //是否是构造函数
 	bool isConstructorArgs = false; //是否是带参数列表的构造函数
+	bool isReturnValeTemplate = false; //函数返回值是否是模板类型
 	bool isFuncNameWhithClassName = false; //函数定义是否带类名，类似 int A::get(){}
+
+	char stopStrs[][20] = {"typedef", "struct"};
 
 	//--------查找关键字class/struct----------------
 	ret = findAllClassAndStructDeclare(p1, p3 - p1 + 1, functions.classes);
@@ -254,6 +260,8 @@ retry:
 	while (p21 <= p3)
 	{
 		memset(&funcStruct, 0, sizeof(FUNCTION_STRUCTURE));
+		isConstructor = false;
+		isDestructor = false;
 
 		//--------查找函数体左右大括号"{}"----------------
 		ret = findCharForward(p21, p3 - p21 + 1, '{', p22);
@@ -294,24 +302,27 @@ retry:
 		}
 
 		//--------查找函数参数左右小括号对"()"----------------
+		lineNumber = funcStruct.functionBody.lineNumberOfStart;
 		p21 = funcStruct.functionBody.start - 1;
 
-		lineNumber = funcStruct.functionBody.lineNumberOfStart;
-		ret = skipWhiteSpaceBack(p1, funcStruct.functionBody.start - p21 + 1, p21, p21, lineNumber);
-		RETURN_IF_FAILED(ret, ret);
+retry0:
+		ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
+		if (ret != 0)
+		{
+			goto retry4; //未找到函数参数右小括号')'
+		}
 		
-		ret = findCharBackStop(p1, p21 - p1 + 1, ')', "{}", p21);
+		ret = findCharStrsBackStop(p1, p21 - p1 + 1, ')', ";{}#=", stopStrs, sizeof(stopStrs) / sizeof(stopStrs[0]), p21);
 		if (ret != 0)
 		{
 			goto retry4; //未找到函数参数右小括号')'
 		}
 
-retry0:
 		funcStruct.functionParameter.end = p21;
 		funcStruct.functionParameter.fileOffsetOfEnd = funcStruct.functionParameter.end - p1;
 		funcStruct.functionParameter.lineNumberOfEnd = lineNumber;
 
-		ret = findPairCharBackStop(p1, p21 - p1 + 1, p21, '(', ')', ";{}", p21);
+		ret = findPairCharBackStop(p1, p21 - p1 + 1, p21, '(', ')', ";{}#=", p21);
 		if (ret != 0)
 		{
 			goto retry4; //可能是类似 "struct A {};" 的声明，而不是函数定义，则跳过
@@ -323,43 +334,6 @@ retry0:
 		lineNumber -= statBufferLinesCount(funcStruct.functionParameter.start, funcStruct.functionParameter.length);
 		funcStruct.functionParameter.lineNumberOfStart = lineNumber;
 
-		//-----尝试查找函数参数列表右小括号后面的C/C++修饰符(type-qualifier类型限定符)--------
-		p21 = funcStruct.functionParameter.end + 1;
-		lineNumber = funcStruct.functionParameter.lineNumberOfEnd;
-
-		ret = skipWhiteSpaceForward(p21, funcStruct.functionBody.start - p21 + 1, p21, p21, lineNumber);
-		RETURN_IF_FAILED(ret, ret);
-
-		funcStruct.functionTypeQualifier.start = p21;
-		funcStruct.functionTypeQualifier.fileOffsetOfStart = funcStruct.functionTypeQualifier.start - p1;
-		funcStruct.functionTypeQualifier.lineNumberOfStart = lineNumber;
-
-		p22 = funcStruct.functionBody.start - 1;
-		ret = skipWhiteSpaceBack(p21, p22 - p21 + 1, p22, p22, lineNumber);
-		if (ret != 0)
-		{
-			goto retry1; //说明没有修饰符，则跳过
-		}
-
-		funcStruct.functionTypeQualifier.end = p22;
-		funcStruct.functionTypeQualifier.fileOffsetOfEnd = funcStruct.functionTypeQualifier.end - p1;
-		funcStruct.functionTypeQualifier.lineNumberOfEnd = lineNumber;
-
-		if(funcStruct.functionTypeQualifier.end - funcStruct.functionTypeQualifier.start + 1 > 1)
-		{
-			ret = findCharForward(funcStruct.functionTypeQualifier.start, funcStruct.functionTypeQualifier.end - funcStruct.functionTypeQualifier.start + 1, '#', p22);
-			if(ret == 0) //FIXME: 目前只支持 类似 int get() const { return 0; }
-			{
-				goto retry4;
-			}
-		}
-
-		if (funcStruct.functionTypeQualifier.start == funcStruct.functionTypeQualifier.end)
-		{
-			memset(&funcStruct.functionTypeQualifier, 0, sizeof(funcStruct.functionTypeQualifier));
-		}
-
-retry1:
 		//--------查找函数名----------------
 		lineNumber = funcStruct.functionParameter.lineNumberOfStart;
 		p21 = funcStruct.functionParameter.start - 1;
@@ -374,48 +348,86 @@ retry1:
 		ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
 		RETURN_IF_FAILED(ret, ret);
 
-		//---反向尝试查找C++ 类作用域限定符"::"------
-		ret = findQueryStrBackStop(p1, p21 - p1 + 1, p21, "::", ";{}()", p21); //类似 int A::B::get() { return 0; }
-		if(ret == 0)
-		{
-			p21--;
-
-			ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
-			RETURN_IF_FAILED(ret, ret);
-
-			ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
-			RETURN_IF_FAILED(ret, ret);
-
-			isFuncNameWhithClassName = true; //函数定义是否带类名，类似 int A::get(){}
-		}
-
-		ret = findCharBackStop(p1, p21 - p1 + 1, '~', ";{}()", p21); //尝试查找析构函数，类似 ~A::A(){}
-		if (ret == 0)
+		if (p21 - 1 >= p1 && *(p21 - 1) == '~') //说明是析构函数，类似 A::~A(){}
 		{
 			isDestructor = true;
+			p21--;
 		}
-
+		
 		funcStruct.functionName.start = p21;
 		funcStruct.functionName.fileOffsetOfStart = funcStruct.functionName.start - p1;
 		funcStruct.functionName.lineNumberOfStart = lineNumber;
-		
-		//---判断是否是带初始化列表的构造函数，类似 "class A {public: int m_a; int m_b; public: A::A():m_a(1),m_b(0){}};"
-		if(isFuncNameWhithClassName == false)
+
+		//------尝试查找C++类名-------
+		p21 = funcStruct.functionName.start - 1;
+
+		ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
+		if (ret != 0 )
 		{
-			ret = findCharBackStop(p1, p21 - p1 + 1, ':', ";{}", p21);
-			if (ret == 0)
+			goto retry1;
+		}
+
+		if (p21 >= p1)
+		{
+			if (*p21 == ',') //类似 "A::A():m_a(1),m_b(0){}" 中的","
 			{
-				p21--;
-				ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
+				//-----查找 "A::A():m_a(1),m_b(0){}" 中的第三个":"
+				ret = findCharBackStop(p1, p21 - p1 + 1, ':', ";{}", p21);
 				RETURN_IF_FAILED(ret, ret);
 
-				if(*p21 == ')') //说明是带初始化列表的构造函数
+				isConstructorArgs = true;
+			}
+
+			if (*p21 == ':')
+			{
+				if (p21 - 1 >= p1 && *(p21 - 1) == ':') //说明是C++ 类作用域限定符"::"，类似 "A::A():m_a(1),m_b(0){}" 中的"::"
 				{
-					goto retry0;
+					p21 -= 2;
+
+					p22 = p21;
+					ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
+					RETURN_IF_FAILED(ret, ret);
+
+					funcStruct.functionName.start = p21;
+					funcStruct.functionName.fileOffsetOfStart = funcStruct.functionName.start - p1;
+					funcStruct.functionName.lineNumberOfStart = lineNumber;
+
+					len = MIN(p22 - p21 + 1, sizeof(funcStruct.className) - 1);
+					if (len > 0)
+					{
+						memcpy(funcStruct.className, p21, len);
+						funcStruct.className[len] = '\0';
+
+						int classNameLen = len;
+						int funcNameLen = funcStruct.functionName.end - p22 - 2;
+
+						if (classNameLen == funcNameLen 
+								&& memcmp(funcStruct.functionName.start, p22 + 3, classNameLen) == 0 
+							)
+						{
+							isConstructor = true; //说明是构造函数
+						}
+					}
+				}
+				else
+				{
+					p22 = p21 - 1;
+					ret = skipWhiteSpaceBack(p1, p22 - p1 + 1, p22, p22, lineNumber);
+					RETURN_IF_FAILED(ret, ret);
+
+					if (*p22 == ')') //说明是 "A::A():m_a(1),m_b(0){}" 中的第三个":"
+					{
+						goto retry0; //重新查找函数参数
+					}
+					else //可能是 public: A():m_a(1),m_b(0){} 中的第一个":"
+					{
+						//FIXME:
+					}
 				}
 			}
 		}
 
+retry1:
 		//-----检查函数名是否是C++关键词，例如 if (a == 1) {} --------
 		ret2 = isKeyword(funcStruct.functionName.start, funcStruct.functionName.end - funcStruct.functionName.start + 1);
 		if (ret2) //函数名是C/C++语言关键词
@@ -424,18 +436,19 @@ retry1:
 		}
 
 		//--------查找函返回值----------------
-		if (isDestructor == true)
+		// 函数返回值(type-qualifier类型限定符)： const，template, virtual, inline, static, extern, explicit, friend, constexpr
+		// 函数返回值类型(type-specifier类型区分符) : void *, void, int, short, long, float, double, auto, struct结构体类型，enum枚举类型，typedef类型, uint32_t
+		// 比如: static inline const unsigned long long * get(int &a) const { return 0; }
+
+		if (isConstructor == true || isDestructor == true)
 		{
-			goto retry3; //析构函数没有返回值
+			goto retry3; //构造函数和析构函数没有返回值
 		}
 
 		p21 = funcStruct.functionName.start - 1;
 
 		ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
-		if (ret != 0)
-		{
-			goto retry3; //像构造函数和析构函数就没有返回值
-		}
+		RETURN_IF_FAILED(ret, ret);
 
 		funcStruct.functionReturnValue.end = p21;
 		funcStruct.functionReturnValue.fileOffsetOfEnd = funcStruct.functionReturnValue.end - p1;
@@ -444,81 +457,105 @@ retry1:
 		if(*p21 == '*') //函数返回值类型是一个地址指针
 		{
 			p21--;
+			ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
+			RETURN_IF_FAILED(ret, ret);
 		}
 
-		// 函数返回值(type-qualifier类型限定符)： const，template, virtual, inline, static, extern, explicit, friend, constexpr
-		// 函数返回值类型(type - specifier类型区分符) : void *, void, int, short, long, float, double, auto, struct结构体类型，enum枚举类型，typedef类型, uint32_t
-		// 比如: inline const unsigned long long * get(int &a) const { return 0; }
-		
-		wordCountMax = 5; //函数名前面，最多搜索5个以空格隔开的字符串
-		wordCount = 0;
-		overSerach = 0; //停止搜索
-		lineCntMax = 5; //函数名前面，最多搜索5行
-		lineCnt = 0;
-		p22 = p21; //保存p21值
-
-retry2:
-		ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
-
-		while (p21 > p1)
+		p22 = p21;
+		ret = findStrVarTypeBack(p1, p22 - p1 + 1, p22, p21);
+		if (ret != 0) //可能函数无返回值
 		{
-			if ((*p21 >= '0' && *p21 <= '9')
-				|| (*p21 >= 'a' && *p21 <= 'z')
-				|| (*p21 >= 'A' && *p21 <= 'Z')
-				|| (*p21 == '_') //C++ 函数名和变量命名规则，数字 + 字母 + 下划线
-				|| (*p21 == '<' || *p21 == '>') //C++ 模板 template <typename T> class A {};
-				|| (*p21 == '\r' || *p21 == '\n') //返回值分散在多行
-				)
-			{
-
-			}
-			else
-			{
-				if (p21 == p1 //搜到起始位置了
-					|| *p21 == '{' //可能函数体在C++类的内部
-					|| *p21 == '}' //可能是上一个函数结束的位置
-					|| *p21 == ';' //语句结束
-					|| *p21 == ')' //类似 #pragma comment(lib, "user32.lib")
-					|| *p21 == '\\' //类似 '#define  MACRO_A \'
-					|| *p21 == ':' //类似 class A { public: A(){} };
-					|| *p21 == '"' //类似 '#include "FuncRoute.h" int main() { return 0; };'
-					|| *p21 == '`' //特殊字符，不属于C++规范，仅作为本解析器替换字符用
-					)
-				{
-					overSerach = 1; //停止搜索
-
-					p21++;
-					while (p21 <= p3 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
-					{
-						if (*p21 == '\n')
-						{
-							lineNumber++;
-						}
-						p21++;
-					}
-				}
-				else if (*p21 == '\n')
-				{
-					lineCnt++;
-				}
-				break;
-			}
+			funcStruct.functionReturnValue.end = NULL;
+			goto retry3;
+		}
+/*
+		if (*p21 == '>') //说明返回值类似 "std::vector<int> A::get(){}"
+		{
+			ret = findPairCharBack(p1, p21 - p1 + 1, p21, '<', '>', p21); //<int>
+			RETURN_IF_FAILED(ret, ret);
 
 			p21--;
+
+			ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
+			RETURN_IF_FAILED(ret, ret);
+
+			ret = findStrBack(p1, p21 - p1 + 1, p21, p21); //vector
+			RETURN_IF_FAILED(ret, ret);
+
+			if (p21 - 2 >= p1 && *(p21 - 1) == ':' && *(p21 - 2) == ':') //::
+			{
+				p21 -= 3;
+
+				ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
+				RETURN_IF_FAILED(ret, ret);
+
+				ret = findStrBack(p1, p21 - p1 + 1, p21, p21); //std
+				RETURN_IF_FAILED(ret, ret);
+			}
+
+			isReturnValeTemplate = true;
+		}
+		else
+		{
+			ret = findStrBack(p1, p21 - p1 + 1, p21, p21); //int A::get(){}中的"int"
+			if (ret != 0) //可能函数无返回值
+			{
+				funcStruct.functionReturnValue.end = NULL;
+				goto retry3;
+			}
+		}
+*/
+		//-------------
+		p21--;
+		for (int i = 0; i < wordCountMax; ++i) //循环次数的最大值，类似 static inline const unsigned long long * A::get(){}
+		{
+			ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
+			if (ret == 0)
+			{
+				p22 = p21;
+				ret = findStrVarTypeBack(p1, p22 - p1 + 1, p22, p21); //unsigned int A::get(){}中的"unsigned"
+				if (ret == 0)
+				{
+					ret2 = isKeywordVarType(p21, p22 - p21 + 1);
+					if (ret2 == true) //如果是关键字，则再继续尝试向前搜索一个字符串
+					{
+						if (!(p22 - p21 + 1 == 6 && memcmp(p21, "static", 6) == 0))
+						{
+							p21--;
+							continue; //继续查找
+						}
+						else
+						{
+							p21--;
+							break;
+						}
+					}
+					else
+					{
+						if (p22 - p21 + 1 == 6 && memcmp(p21, "define", 6) == 0) //类似 "# define    SAFE_DELETE(P)     {if (P) {delete P; P = NULL;}}"
+						{
+							goto retry4;
+						}
+						p21 = p22 + 1;
+						break;
+					}
+				}
+				else
+				{
+					if (*p22 == '#' && memcmp(p22 + 1, "define", 6) == 0) //类似 "#define A"，注意："#"和"define"之间没有空白字符
+					{
+						goto retry4;
+					}
+
+					p21 = p22 + 1;
+					break;
+				}
+			}
 		}
 
-		if (p21 < p1)
-		{
-			ret = -7;
-			printf("%s(%d): %s: Error: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
-			break;
-		}
-
-		wordCount++;
-		if (p21 != p1 && overSerach == 0 && wordCount < wordCountMax && lineCnt < lineCntMax)
-		{
-			goto retry2;
-		}
+		p21++;
+		ret = skipWhiteSpaceForward(p21, funcStruct.functionReturnValue.end - p21 + 1, p21, p21, lineNumber);
+		RETURN_IF_FAILED(ret, ret);
 
 		funcStruct.functionReturnValue.start = p21;
 		funcStruct.functionReturnValue.fileOffsetOfStart = funcStruct.functionReturnValue.start - p1;
@@ -693,6 +730,67 @@ bool CFuncRoute::isKeyword(unsigned char *buffer, int bufferSize)
 		if(bufferSize == strLen)
 		{
 			if(memcmp(buffer, cpp_preprocessors[i], strLen) == 0)
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+
+bool CFuncRoute::isKeywordVarType(unsigned char *buffer, int bufferSize)
+{
+	if (buffer == NULL || bufferSize <= 0)
+	{
+		return false;
+	}
+
+	char cppVarKeywords[][25] =
+	{
+		"auto",
+		"bool",
+		"char",
+		"char8_t", //(C++20 起)
+		"char16_t", //(C++11 起)
+		"char32_t", //(C++11 起)
+		"const",
+		"consteval", //(C++20 起)
+		"constexpr", //(C++11 起)
+		"constinit", //(C++20 起)
+		"double",
+		"enum",
+		"extern",
+		"float",
+		"inline",
+		"int",
+		"long",
+		"operator",
+		"short",
+		"signed",
+		"static",
+		"static_cast",
+		"struct",
+		"template",
+		"thread_local", //(C++11 起)
+		"typename",
+		"union",
+		"unsigned",
+		"virtual",
+		"void",
+		"volatile",
+		"wchar_t",
+	};
+
+	int len1 = sizeof(cppVarKeywords) / sizeof(cppVarKeywords[0]);
+
+	for (int i = 0; i < len1; ++i)
+	{
+		int strLen = strlen(cppVarKeywords[i]);
+		if (bufferSize == strLen)
+		{
+			if (memcmp(buffer, cppVarKeywords[i], strLen) == 0)
 			{
 				return true;
 			}
@@ -1078,11 +1176,11 @@ int CFuncRoute::findAllMacros(std::vector<std::string> files, std::vector<MACRO>
 									//-------查找到一个完整的宏定义----------
 									macros.push_back(macro); //注意：有的宏定义里面还有宏定义，即宏定义嵌套，需要在后面再次展开宏定义
 								}
-								else
+								else //像 "#define __C_KEYWORD_H__" 也是合法的
 								{
-									ret = -6;
-									printf("%s(%d): %s: Error: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
-									break;
+//									ret = -6;
+//									printf("%s(%d): %s: Error: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
+//									break;
 								}
 							}
 							else //像 "#define __C_KEYWORD_H__" 也是合法的
@@ -1263,14 +1361,15 @@ int CFuncRoute::findAllClassAndStructDeclare(unsigned char *buffer, int bufferSi
 					cs.classNameAlias.lineNumberOfStart = lineNumber;
 
 					ret = findStrForward(p21, p22 - p21 + 1, p21, p21);
-					RETURN_IF_FAILED(ret, ret);
+					if (ret == 0) //类似 struct A {}; 则没有别名
+					{
+						cs.classNameAlias.end = p21;
+						cs.classNameAlias.fileOffsetOfEnd = cs.classNameAlias.end - p1;
+						cs.classNameAlias.lineNumberOfEnd = lineNumber;
 
-					cs.classNameAlias.end = p21;
-					cs.classNameAlias.fileOffsetOfEnd = cs.classNameAlias.end - p1;
-					cs.classNameAlias.lineNumberOfEnd = lineNumber;
-
-					cs.classNameAlias.length = cs.classNameAlias.end - cs.classNameAlias.start + 1;
-					cs.classNameAlias.copyStrFromBuffer();
+						cs.classNameAlias.length = cs.classNameAlias.end - cs.classNameAlias.start + 1;
+						cs.classNameAlias.copyStrFromBuffer();
+					}
 				}
 
 				//-------在类/结构体的声明语句块内部，提取出所有声明的成员变量---------
@@ -1722,6 +1821,7 @@ int CFuncRoute::skipWhiteSpaceBack(unsigned char *buffer, int bufferSize, unsign
 		{
 			lineNumber--;
 		}
+
 		p21--;
 	}
 
@@ -2016,6 +2116,50 @@ int CFuncRoute::findCharBackStop(unsigned char *buffer, int bufferSize, char ch,
 }
 
 
+int CFuncRoute::findCharStrsBackStop(unsigned char *buffer, int bufferSize, char ch, char *stopChar, const char stopStrs[][20], int stopStrsSize, unsigned char *&leftCharPos)
+{
+	int ret = 0;
+
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = NULL;
+	int stopCharLen = strlen(stopChar);
+
+	p21 = p3;
+	while (p21 >= p1)
+	{
+		for (int i = 0; i < stopCharLen; ++i)
+		{
+			if (*p21 == stopChar[i]) //遇到停止字符，则返回失败
+			{
+				return -1;
+			}
+		}
+
+		for (int i = 0; i < stopStrsSize; ++i)
+		{
+			int strLen = strlen(stopStrs[i]);
+			int len3 = p3 - p21 + 1;
+			if (len3 >= strLen && memcmp(p21, stopStrs[i], strLen) == 0) //遇到停止字符串，则返回失败
+			{
+				return -1;
+			}
+		}
+
+		if (*p21 == ch)
+		{
+			leftCharPos = p21;
+			return 0;
+		}
+
+		p21--;
+	}
+
+	return -1;
+}
+
+
 int CFuncRoute::findStrForward(unsigned char *buffer, int bufferSize, unsigned char *leftPos, unsigned char *&rightPos)
 {
 	int ret = 0;
@@ -2090,6 +2234,93 @@ int CFuncRoute::findStrBack(unsigned char *buffer, int bufferSize, unsigned char
 		}
 
 		p21--;
+	}
+
+	if (flag == 1 && p21 < p1)
+	{
+		leftPos = p21 + 1;
+		return 0;
+	}
+
+	return -1;
+}
+
+
+int CFuncRoute::findStrVarTypeBack(unsigned char *buffer, int bufferSize, unsigned char *rightPos, unsigned char *&leftPos)
+{
+	int ret = 0;
+
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = NULL;
+	unsigned char *p22 = NULL;
+	int lineNumber = 1;
+	int flag = 0;
+
+	p21 = rightPos;
+
+	ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
+	if (ret != 0)
+	{
+		if (*p21 == '>') //类似 std::vector<int> get(){};
+		{
+			ret = findPairCharBack(p1, p21 - p1 + 1, p21, '<', '>', p21);
+			if (ret == 0)
+			{
+				p21--;
+			}
+			else
+			{
+				return -1;
+			}
+		}
+		else
+		{
+			return -1;
+		}
+	}
+
+	//---------------------
+	p22 = p21 - 1;
+	ret = skipWhiteSpaceBack(p1, p22 - p1 + 1, p22, p21, lineNumber);
+	if (ret != 0)
+	{
+		p21 = p22;
+	}
+
+	if (*p21 == ':')
+	{
+		if (p21 - 1 >= p1)
+		{
+			p21--;
+			if (*p21 == ':') //类似 std::string get(){}
+			{
+				p21--;
+
+				ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
+				if (ret == 0)
+				{
+					leftPos = p21;
+					return 0;
+				}
+			}
+			else
+			{
+				leftPos = p22 + 1;
+				return 0;
+			}
+		}
+		else
+		{
+			leftPos = p22 + 1;
+			return 0;
+		}
+	}
+	else
+	{
+		leftPos = p22 + 1;
+		return 0;
 	}
 
 	return -1;
