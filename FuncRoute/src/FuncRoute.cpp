@@ -79,6 +79,7 @@ int CFuncRoute::splitDirsBySemicolon(std::string dirs, std::vector<std::string> 
 			printf("%s: Error ;\n", __FUNCTION__);
 			return -1;
 		}
+		p1++;
 	}
 
 	return 0;
@@ -127,6 +128,9 @@ int CFuncRoute::findAllFunctionsName(std::vector<std::string> dirsInclude, std::
 		}
 	}
 
+	files01.clear();
+	files02.clear();
+
 	//---------------------------
 	int len1 = files.size();
 	RETURN_IF_FAILED(len1 <= 0, -1);
@@ -171,6 +175,8 @@ int CFuncRoute::findAllFunctionsName(std::vector<std::string> dirsInclude, std::
 	{
 		files2 = files;
 	}
+	
+	files.clear();
 
 	//------------------------
 	int len3 = files2.size();
@@ -299,8 +305,8 @@ int CFuncRoute::search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSi
 	ret = replaceAllCodeCommentsBySpace(buffer2, bufferSize);
 	RETURN_IF_FAILED(ret, -2);
 	
-//	static int cnt = 0;
-//	char file22[600] = "";
+	static int cnt = 0;
+	char file22[600] = "";
 //	sprintf(file22, "./out%d.txt", cnt++);
 //	ret = dumpBufferToFile(buffer2, bufferSize, file22);
 
@@ -310,6 +316,13 @@ int CFuncRoute::search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSi
 
 //	sprintf(file22, "./out%d.txt", cnt++);
 //	ret = dumpBufferToFile(buffer2, bufferSize, file22);
+
+	//------将所有#define宏用空格' '代替--------
+//	ret = replaceAllMacroDefineStrBySpace(buffer2, bufferSize);
+//	RETURN_IF_FAILED(ret, -3);
+	
+	sprintf(file22, "./out%d.txt", cnt++);
+	ret = dumpBufferToFile(buffer2, bufferSize, file22);
 
 	//------查找所有的C++类名(关键字class, struct)--------
 	char classKeyword[] = "class";
@@ -998,7 +1011,7 @@ int CFuncRoute::findOverloadOperatorsBack(unsigned char *buffer, int bufferSize,
 }
 
 
-int  CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferSize)
+int CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferSize)
 {
 	int ret = 0;
 	
@@ -1103,7 +1116,7 @@ int  CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int buffer
 }
 
 
-int  CFuncRoute::replaceAllStrBySpace(unsigned char *buffer, int bufferSize)
+int CFuncRoute::replaceAllStrBySpace(unsigned char *buffer, int bufferSize)
 {
 	int ret = 0;
 	
@@ -1111,10 +1124,17 @@ int  CFuncRoute::replaceAllStrBySpace(unsigned char *buffer, int bufferSize)
 	unsigned char *p2 = buffer;
 	unsigned char *p3 = buffer + bufferSize - 1;
 	unsigned char *p21 = NULL;
+	unsigned char *p22 = NULL;
 
 	//------先将两个连续的反斜杠"\\"用空格' '代替--------
 	while (p2 <= p3 - 1)
 	{
+/*		ret = findNextCodeComments(p2, p3 - p2 + 1, p22, p2); //跳过注释掉的代码
+		if(ret == 0)
+		{
+			p2++;
+		}
+*/
 		if (*p2 == '\\' && *(p2 + 1) == '\\') //两个连续的"\\"
 		{
 			*p2 = '`';
@@ -1128,6 +1148,13 @@ int  CFuncRoute::replaceAllStrBySpace(unsigned char *buffer, int bufferSize)
 	p2 = p1;
 	while (p2 <= p3 - 1)
 	{
+/*		ret = findNextCodeComments(p2, p3 - p2 + 1, p22, p2); //跳过注释掉的代码
+		if(ret == 0)
+		{
+			p2++;
+		}
+*/
+
 		if (*p2 == '\\' && (*(p2 + 1) == '"' || *(p2 + 1) == '\''))
 		{
 			*p2 = '`';
@@ -1142,6 +1169,12 @@ int  CFuncRoute::replaceAllStrBySpace(unsigned char *buffer, int bufferSize)
 	p2 = p1;
 	while (p2 <= p3)
 	{
+/*		ret = findNextCodeComments(p2, p3 - p2 + 1, p22, p2); //跳过注释掉的代码
+		if(ret == 0)
+		{
+			p2++;
+		}
+*/
 		if (*p2 == '\'')
 		{
 			if (flag == 0)
@@ -1167,6 +1200,13 @@ int  CFuncRoute::replaceAllStrBySpace(unsigned char *buffer, int bufferSize)
 	p2 = p1;
 	while (p2 <= p3)
 	{
+/*		ret = findNextCodeComments(p2, p3 - p2 + 1, p22, p2); //跳过注释掉的代码
+		if(ret == 0)
+		{
+			p2++;
+		}
+*/
+
 		if (*p2 == '"')
 		{
 			if(flag == 0)
@@ -1183,6 +1223,65 @@ int  CFuncRoute::replaceAllStrBySpace(unsigned char *buffer, int bufferSize)
 				}
 			}
 		}
+		p2++;
+	}
+	
+	return 0;
+}
+
+
+int CFuncRoute::replaceAllMacroDefineStrBySpace(unsigned char *buffer, int bufferSize)
+{
+	int ret = 0;
+	
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = NULL;
+	int lineNumber = 1;
+	char strDefine[] = "#define";
+	int strLen = strlen(strDefine);
+	
+	p3 -= strLen;
+
+	//------用空格' '代替--------
+	while (p2 <= p3)
+	{
+		ret = skipWhiteSpaceForward(p2, p3 - p2 + 1, p2, p2, lineNumber);
+
+		if(memcmp(p2, strDefine, strLen) == 0)
+		{
+			p21 = p2;
+			while(p2 <= p3)
+			{
+				ret = findCharForward(p2, p3 - p2 + 1, '\n', p2);
+				if(ret == 0)
+				{
+					if(*(p2 - 1) == '\\'|| (*(p2 - 1) == '\r' && *(p2 - 2) == '\\')) //说明是多行宏定义
+					{
+						//do nothing
+					}else
+					{
+						break;
+					}
+				}else
+				{
+					break;
+				}
+				p2++;
+			}
+
+			//--------------------
+			while(p21 <= p2)
+			{
+				if(*p21 != '\n')
+				{
+					*p21 = ' ';
+				}
+				p21++;
+			}
+		}
+
 		p2++;
 	}
 	
@@ -2045,6 +2144,187 @@ int CFuncRoute::findWholeFuncDeclare(unsigned char *buffer, int bufferSize, unsi
 	}
 
 	return 0;
+}
+
+
+int CFuncRoute::findNextMacroDefine(unsigned char *buffer, int bufferSize, unsigned char *&leftPos, unsigned char *&rightCharPos)
+{
+	int ret = 0;
+	
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = NULL;
+	int lineNumber = 1;
+	char strDefine[] = "#define";
+	int strLen = strlen(strDefine);
+	
+	p3 -= strLen;
+
+	//------用空格' '代替--------
+	while (p2 <= p3)
+	{
+		if (*p2 == '\n')
+		{
+			ret = skipWhiteSpaceForward(p2, p3 - p2 + 1, p2, p2, lineNumber);
+			if(ret != 0)
+			{
+				return -1;
+			}
+		}
+
+		if(memcmp(p2, strDefine, strLen) == 0)
+		{
+			p21 = p2;
+			while(p2 <= p3)
+			{
+				ret = findCharForward(p2, p3 - p2 + 1, '\n', p2);
+				if(ret == 0)
+				{
+					if(*(p2 - 1) == '\\'|| (*(p2 - 1) == '\r' && *(p2 - 2) == '\\')) //说明是多行宏定义
+					{
+						//do nothing
+					}else
+					{
+						break;
+					}
+				}else
+				{
+					break;
+				}
+				p2++;
+			}
+
+			//--------------------
+			if(p21 <= p2)
+			{
+				leftPos = p21;
+				rightCharPos = p2;
+				return 0;
+			}
+		}
+
+		p2++;
+	}
+	
+	return -1;
+}
+
+
+int CFuncRoute::findNextCodeComments(unsigned char *buffer, int bufferSize, unsigned char *&leftPos, unsigned char *&rightCharPos)
+{
+	int ret = 0;
+	
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = NULL;
+	unsigned char *p22 = NULL;
+	int doubleQuotationMarksFlag = 0; //双引号
+	int flag = 0;
+
+	//------先将被注释掉的代码用空格' '代替（换行号符'\n'保留）--------
+	while (p2 <= p3)
+	{
+		//双引号内部的双斜杠不代表注释的意思，需要跳过
+		if (*p2 == '"')
+		{
+			p21 = p2 + 1;
+			while (p21 <= p3)
+			{
+				if (*p21 == '"') //尝试查找配对的右边的双引号
+				{
+					flag = 0;
+					p22 = p21 - 1;
+					while (p22 >= p1)
+					{
+						if (*p22 == '\\') //判断是否是用反斜杠转义的双引号，如果是，则需要跳过
+						{
+							flag++;
+						}
+						else
+						{
+							break;
+						}
+						p22--;
+					}
+
+					if (flag % 2 == 0) //偶数倍，表示是配对的双引号，则结束查找
+					{
+						p2 = p21 + 1;
+						break;
+					}
+				}
+				p21++;
+			}
+		}
+
+		if (*p2 == '/') //被斜线(oblique line)"/"注释掉的字符串
+		{
+			p21 = p2;
+
+			if (p2 + 1 <= p3 && *(p2 + 1) == '*') //说明是用 "/*...*/" 进行的多行代码注释
+			{
+				p2 += 2;
+
+				while (p2 <= p3)
+				{
+					if (*p2 == '*' && p2 + 1 <= p3 && *(p2 + 1) == '/') //说明找到了"*/"
+					{
+						p2++;
+						break;
+					}
+					p2++;
+				}
+
+				if (p2 <= p3)
+				{
+					leftPos = p21;
+					rightCharPos = p2;
+
+					int len = rightCharPos - leftPos + 2;
+					char *p = (char *)malloc(len);
+					memcpy(p, leftPos, len - 1);
+					p[len] = '\0';
+					printf("111: ---%s---\n", p);
+
+					return 0;
+				}
+			}
+			else if (p2 + 1 <= p3 && *(p2 + 1) == '/') //说明是用 "//..." 进行的单行代码注释
+			{
+				while (p2 <= p3)
+				{
+					if (*p2 != '\n') //换行符不覆盖
+					{
+						*p2 = ' '; //用空格' '覆盖原有的字符
+					}
+					else
+					{
+						leftPos = p21;
+						rightCharPos = p2 - 1;
+
+						int len = rightCharPos - leftPos + 2;
+						char *p = (char *)malloc(len);
+						memcpy(p, leftPos, len - 1);
+						p[len] = '\0';
+						printf("222: ---%s---\n", p);
+
+						return 0;
+					}
+					p2++;
+				}
+			}
+			else
+			{
+				//do nothing
+			}
+		}
+
+		p2++;
+	}
+
+	return -1;
 }
 
 
@@ -3218,7 +3498,7 @@ int CFuncRoute::findAllMemberVarsInClassDeclare(unsigned char *buffer, int buffe
 
 		ret = findStrCharsBackGreedy(p21, p22 - p21 + 1, p22, ">", p22); //类似: std::vector<int> a;
 		RETURN_IF_FAILED(ret, ret);
-		
+
 		var.varType.end = p22;
 		var.varType.fileOffsetOfEnd = var.varType.end - p11;
 		lineNumber = lineNumberBase + statBufferLinesCount(p2, p22 - p2 + 1);
