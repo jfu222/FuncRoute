@@ -41,14 +41,91 @@ CFuncRoute::~CFuncRoute()
 }
 
 
-int CFuncRoute::findAllFunctionsName(std::string filePath, std::vector<std::string> suffixes)
+int CFuncRoute::splitDirsBySemicolon(std::string dirs, std::vector<std::string> &vecDirs)
+{
+	int len = dirs.length();
+	if (len <= 0)
+	{
+		return -1;
+	}
+
+	//--------------------
+	const int line_max_size = 1024;
+	char strCol[line_max_size] = { 0 };
+
+	const char *p = dirs.c_str();
+	const char *p1 = p;
+	const char *p2 = p;
+	char separator = ';'; //分隔符
+
+	while (p1 < p + len)
+	{
+		p2 = p1;
+
+		while (*p1 != separator && p1 < p + len) //跳过连续的非分隔符
+		{
+			p1++;
+		}
+
+		int len2 = p1 - p2;
+		if (len2 > 0 && len2 < line_max_size)
+		{
+			memcpy(strCol, p2, len2);
+			strCol[len2] = '\0';
+			vecDirs.push_back(strCol);
+		}
+		else
+		{
+			printf("%s: Error ;\n", __FUNCTION__);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+
+int CFuncRoute::findAllFunctionsName(std::vector<std::string> dirsInclude, std::vector<std::string> fileDirsExclude, std::vector<std::string> suffixes)
 {
 	int ret = 0;
+	std::vector<std::string> files01;
+	std::vector<std::string> files02;
 	std::vector<std::string> files;
 	std::vector<std::string> files2;
 
-	ret = get_nested_dir_files(filePath.c_str(), files);
-	RETURN_IF_FAILED(ret != 0, ret);
+	int len01 = dirsInclude.size();
+	for (int i = 0; i < len01; ++i)
+	{
+		ret = get_nested_dir_files(dirsInclude[i].c_str(), files01);
+		RETURN_IF_FAILED(ret != 0, ret);
+	}
+
+	int len02 = fileDirsExclude.size();
+	for (int i = 0; i < len02; ++i)
+	{
+		ret = get_nested_dir_files(fileDirsExclude[i].c_str(), files02);
+		RETURN_IF_FAILED(ret != 0, ret);
+	}
+
+	int len03 = files01.size();
+	int len04 = files02.size();
+	for (int i = 0; i < len03; ++i)
+	{
+		int flag = 0;
+		for (int j = 0; j < len04; ++j)
+		{
+			if (files02[j] == files01[i])
+			{
+				flag = 1;
+				break;
+			}
+		}
+
+		if (flag == 0)
+		{
+			files.push_back(files01[i]);
+		}
+	}
 
 	//---------------------------
 	int len1 = files.size();
@@ -322,7 +399,7 @@ retry0:
 		funcStruct.functionParameter.fileOffsetOfEnd = funcStruct.functionParameter.end - p1;
 		funcStruct.functionParameter.lineNumberOfEnd = lineNumber;
 
-		ret = findPairCharBackStop(p1, p21 - p1 + 1, p21, '(', ')', ";{}#=", p21);
+		ret = findPairCharBackStop(p1, p21 - p1 + 1, p21, '(', ')', ";#{}", p21);
 		if (ret != 0)
 		{
 			goto retry4; //可能是类似 "struct A {};" 的声明，而不是函数定义，则跳过
@@ -346,7 +423,14 @@ retry0:
 		funcStruct.functionName.lineNumberOfEnd = lineNumber;
 
 		ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
-		RETURN_IF_FAILED(ret, ret);
+		if (ret != 0)
+		{
+			ret = findOverloadOperatorsBack(p1, p21 - p1 + 1, p21, p21);
+			if (ret == 0) //说明是C++运算符重载函数
+			{
+				//FIXME:
+			}
+		}
 
 		if (p21 - 1 >= p1 && *(p21 - 1) == '~') //说明是析构函数，类似 A::~A(){}
 		{
@@ -435,6 +519,31 @@ retry1:
 			goto retry4;
 		}
 
+		//--------查找函数参数右小括号后面紧跟的修饰符----------------
+		lineNumber = funcStruct.functionBody.lineNumberOfStart;
+		p21 = funcStruct.functionBody.start - 1;
+		p23 = funcStruct.functionName.end + 1;
+
+		ret = skipWhiteSpaceBack(p23, p21 - p23 + 1, p21, p21, lineNumber);
+//		RETURN_IF_FAILED(ret, ret);
+
+		p22 = p21;
+		ret = findStrBack(p1, p22 - p1 + 1, p22, p21);
+		if (ret == 0)
+		{
+			ret2 = isKeyword(p21, p22 - p21 + 1);
+			if (ret2 == true) //说明是 const 等关键词
+			{
+				funcStruct.functionTypeQualifier.start = p21;
+				funcStruct.functionTypeQualifier.fileOffsetOfStart = funcStruct.functionTypeQualifier.start - p1;
+				funcStruct.functionTypeQualifier.lineNumberOfStart = lineNumber;
+
+				funcStruct.functionTypeQualifier.end = p22;
+				funcStruct.functionTypeQualifier.fileOffsetOfEnd = funcStruct.functionTypeQualifier.end - p1;
+				funcStruct.functionTypeQualifier.lineNumberOfEnd = lineNumber;
+			}
+		}
+
 		//--------查找函返回值----------------
 		// 函数返回值(type-qualifier类型限定符)： const，template, virtual, inline, static, extern, explicit, friend, constexpr
 		// 函数返回值类型(type-specifier类型区分符) : void *, void, int, short, long, float, double, auto, struct结构体类型，enum枚举类型，typedef类型, uint32_t
@@ -460,6 +569,16 @@ retry1:
 			ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
 			RETURN_IF_FAILED(ret, ret);
 		}
+		else if (*p21 == '&') //函数返回值类型是一个取地址指针
+		{
+			p21--;
+			ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
+			RETURN_IF_FAILED(ret, ret);
+		}
+		else if (*p21 == ')') //FIXME: 类似 "#define Func(p) funcA(p, __LINE__, __FILE__)"
+		{
+			goto retry4;
+		}
 
 		p22 = p21;
 		ret = findStrVarTypeBack(p1, p22 - p1 + 1, p22, p21);
@@ -468,43 +587,7 @@ retry1:
 			funcStruct.functionReturnValue.end = NULL;
 			goto retry3;
 		}
-/*
-		if (*p21 == '>') //说明返回值类似 "std::vector<int> A::get(){}"
-		{
-			ret = findPairCharBack(p1, p21 - p1 + 1, p21, '<', '>', p21); //<int>
-			RETURN_IF_FAILED(ret, ret);
 
-			p21--;
-
-			ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
-			RETURN_IF_FAILED(ret, ret);
-
-			ret = findStrBack(p1, p21 - p1 + 1, p21, p21); //vector
-			RETURN_IF_FAILED(ret, ret);
-
-			if (p21 - 2 >= p1 && *(p21 - 1) == ':' && *(p21 - 2) == ':') //::
-			{
-				p21 -= 3;
-
-				ret = skipWhiteSpaceBack(p1, p21 - p1 + 1, p21, p21, lineNumber);
-				RETURN_IF_FAILED(ret, ret);
-
-				ret = findStrBack(p1, p21 - p1 + 1, p21, p21); //std
-				RETURN_IF_FAILED(ret, ret);
-			}
-
-			isReturnValeTemplate = true;
-		}
-		else
-		{
-			ret = findStrBack(p1, p21 - p1 + 1, p21, p21); //int A::get(){}中的"int"
-			if (ret != 0) //可能函数无返回值
-			{
-				funcStruct.functionReturnValue.end = NULL;
-				goto retry3;
-			}
-		}
-*/
 		//-------------
 		p21--;
 		for (int i = 0; i < wordCountMax; ++i) //循环次数的最大值，类似 static inline const unsigned long long * A::get(){}
@@ -801,6 +884,120 @@ bool CFuncRoute::isKeywordVarType(unsigned char *buffer, int bufferSize)
 }
 
 
+int CFuncRoute::findOverloadOperatorsBack(unsigned char *buffer, int bufferSize, unsigned char *rightCharPos, unsigned char *&leftCharPos)
+{
+	if (buffer == NULL || bufferSize <= 0)
+	{
+		return -1;
+	}
+
+	int ret = 0;
+
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = rightCharPos;
+	unsigned char *p22 = rightCharPos;
+	unsigned char *p23 = NULL;
+	int lineNumber = 1;
+
+	char operatorKeywod[] = "operator";
+
+	if (p21 - p1 + 1 < strlen(operatorKeywod) + 2)
+	{
+		return -1; //内存缓存长度过小
+	}
+
+	//C++可重载的运算符
+	char cppOverloadOperators[][10] =
+	{
+		"+", //加
+		"-", //减
+		"*", //乘
+		"/", //除
+		"%", //取模
+		"==", //等于
+		"!=", //不等于
+		"<", //小于
+		">", //大于
+		"<=", //小于等于
+		">=", //大于等于
+		"||", //逻辑或
+		"&&", //逻辑与
+		"!", //逻辑非
+		"+", //正
+		"-", //负
+		"*", //指针
+		"&", //取地址
+		"++", //自增
+		"--", //自减
+		"|", //按位或
+		"&", //按位与
+		"~", //按位取反
+		"^", //按位异或
+		"<<", //左移
+		">>", //右移
+		"=", //赋值运算符
+		"+=", //赋值运算符
+		"-=", //赋值运算符
+		"*=", //赋值运算符
+		"/=", //赋值运算符
+		"%=", //赋值运算符
+		"&=", //赋值运算符
+		"|=", //赋值运算符
+		"^=", //赋值运算符
+		"<<=", //赋值运算符
+		">>=", //赋值运算符
+		"()", //函数调用
+		"->", //成员访问
+		",", //逗号
+		"[]", //下标
+//		"new",
+//		"delete",
+//		"new[]",
+//		"delete[]",
+	};
+	
+	ret = findQueryStrBackStop(p1, p21 - p1 + 1, p21, "operator", ";#{}", p21); //类似 "A A::operator >>= (A &t){}"
+	if (ret != 0) //FIXME: 类似 C++11 中 "std::function< threadProc(int *, int *) > func = [&](int *a, int *b)->threadProc {return 0;};"
+	{
+		return -1;
+	}
+
+	p23 = p21;
+
+	p21 += strlen(operatorKeywod);
+	ret = skipWhiteSpaceForward(p21, p22 - p21 + 1, p21, p21, lineNumber);
+	RETURN_IF_FAILED(ret, ret);
+
+	int lenMax = 0;
+	int index = -1;
+	int len1 = sizeof(cppOverloadOperators) / sizeof(cppOverloadOperators[0]);
+
+	for (int i = 0; i < len1; ++i)
+	{
+		int strLen = strlen(cppOverloadOperators[i]);
+
+		if (memcmp(p21, cppOverloadOperators[i], strLen) == 0)
+		{
+			if (strLen > lenMax) //以匹配上长度最长的重载运算符为最佳匹配
+			{
+				lenMax = strLen;
+				index = i;
+			}
+		}
+	}
+
+	if (index != -1) //说明找到了
+	{
+		leftCharPos = p23;
+		return 0;
+	}
+
+	return -1;
+}
+
+
 int  CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferSize)
 {
 	int ret = 0;
@@ -809,10 +1006,46 @@ int  CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int buffer
 	unsigned char *p2 = buffer;
 	unsigned char *p3 = buffer + bufferSize - 1;
 	unsigned char *p21 = NULL;
+	unsigned char *p22 = NULL;
+	int doubleQuotationMarksFlag = 0; //双引号
+	int flag = 0;
 
 	//------先将被注释掉的代码用空格' '代替（换行号符'\n'保留）--------
 	while (p2 <= p3)
 	{
+		//双引号内部的双斜杠不代表注释的意思，需要跳过
+		if (*p2 == '"')
+		{
+			p21 = p2 + 1;
+			while (p21 <= p3)
+			{
+				if (*p21 == '"') //尝试查找配对的右边的双引号
+				{
+					flag = 0;
+					p22 = p21 - 1;
+					while (p22 >= p1)
+					{
+						if (*p22 == '\\') //判断是否是用反斜杠转义的双引号，如果是，则需要跳过
+						{
+							flag++;
+						}
+						else
+						{
+							break;
+						}
+						p22--;
+					}
+
+					if (flag % 2 == 0) //偶数倍，表示是配对的双引号，则结束查找
+					{
+						p2 = p21 + 1;
+						break;
+					}
+				}
+				p21++;
+			}
+		}
+
 		if (*p2 == '/') //被斜线(oblique line)"/"注释掉的字符串
 		{
 			p21 = p2;
@@ -1185,8 +1418,8 @@ int CFuncRoute::findAllMacros(std::vector<std::string> files, std::vector<MACRO>
 							}
 							else //像 "#define __C_KEYWORD_H__" 也是合法的
 							{
-								ret = 0;
-								printf("%s(%d): %s: Warn: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
+//								ret = 0;
+//								printf("%s(%d): %s: Warn: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
 //								break;
 							}
 						}else
@@ -1321,6 +1554,12 @@ int CFuncRoute::findAllClassAndStructDeclare(unsigned char *buffer, int bufferSi
 				ret = findCharForward(p21, cs.classBody.start - p21 + 1, ':', p21);
 				if (ret == 0) //说明有父类，类似："class B : public A, public C{};"
 				{
+					if (p21 + 1 <= p3 && *(p21 + 1) == ':') //类似 struct A < Ret (C::*)(Args...) > : public B {};
+					{
+						p21 += 2;
+						ret = findCharForward(p21, cs.classBody.start - p21 + 1, ':', p21);
+						RETURN_IF_FAILED(ret, ret);
+					}
 					p21++;
 					ret = skipWhiteSpaceForward(p21, cs.classBody.start - p21 + 1, p21, p21, lineNumber);
 					RETURN_IF_FAILED(ret, ret);
@@ -1479,7 +1718,7 @@ int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, unsig
 
 	if (*p21 == '>') //类似 std::TemplateA<std::string>(a, b); 模板函数调用
 	{
-		ret = findPairCharBackStop(p1, p21 - p1 + 1, p21, '<', '>', ";:{}", p21);
+		ret = findPairCharBackStop(p1, p21 - p1 + 1, p21, '<', '>', ";{}", p21);
 		RETURN_IF_FAILED(ret, ret);
 
 		p21--;
@@ -1521,7 +1760,10 @@ int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, unsig
 		RETURN_IF_FAILED(p21 - 1 < p1, -1);
 		p21--;
 
-		RETURN_IF_FAILED(*p21 != '-', -1);
+		if (*p21 != '-') //类似 "A< B > m_a(12);" 带参数的构造函数的变量声明
+		{
+			return -1;
+		}
 
 		classInstance.instanceType = VAR_TYPE_POINTER;
 	}
@@ -1530,13 +1772,27 @@ int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, unsig
 		RETURN_IF_FAILED(p21 - 1 < p1, -1);
 		p21--;
 
-		RETURN_IF_FAILED(*p21 != ':', -1);
-
-		classInstance.instanceType = VAR_TYPE_STATIC2;
+		if (*p21 == ':')
+		{
+			classInstance.instanceType = VAR_TYPE_STATIC2;
+		}
+		else //进一步判断是否是三目运算符 int a = (b == 1) ? 2 : 4;
+		{
+			p22 = p21 + 1;
+			ret = findPairCharBackStop(p1, p22 - p1 + 1, p22, '?', ':', ";#{}", p22);
+			if (ret == 0)
+			{
+				//FIXME:
+			}
+		}
 	}
 
 	//--------反向查找类的实例名--------------
-	RETURN_IF_FAILED(p21 - 1 < p1, -1);
+	if (p21 - 1 < p1)
+	{
+		return 0; //说明可能是一个全局函数调用，类似 printf("...");
+	}
+	
 	p21--;
 
 	ret = skipWhiteSpaceBack(p1, p21 - p1, p21, p21, lineNumber);
@@ -1550,19 +1806,24 @@ int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, unsig
 
 		if (*p21 == ']') //类似 int len = a[i][j].length();
 		{
-			while (p21 >= p1 && *p21 == ']')
-			{
-				ret = findPairCharBack(p1, p21 - p1 + 1, p21, '[', ']', p21);
-				if (ret != 0)
-				{
-					break;
-				}
-				p21--;
-			}
-		}
+			ret = findPairCharBackStop(p1, p21 - p1 + 1, p21, '[', ']', ";#{}", p21);
+			RETURN_IF_FAILED(ret, ret);
+			
+			p21--;
 
-		ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
-		RETURN_IF_FAILED(ret, ret);
+			ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
+			RETURN_IF_FAILED(ret, ret);
+		}
+		else if (*p21 == ')') //类似 "(a[1].get())->length();"
+		{
+			ret = findPairCharBackStop(p1, p21 - p1 + 1, p21, '(', ')', ";#{}", p21);
+			RETURN_IF_FAILED(ret, ret);
+		}
+		else
+		{
+			ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
+			RETURN_IF_FAILED(ret, ret);
+		}
 
 		classInstance.classInstanceName.start = p21;
 		classInstance.classInstanceName.fileOffsetOfStart = p21 - p11;
@@ -1615,7 +1876,22 @@ int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, unsig
 		classInstance.functionReturnValue.lineNumberOfEnd = lineNumber;
 
 		ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
-		RETURN_IF_FAILED(ret, ret);
+		if (ret != 0)
+		{
+			if (*p21 == ']') //类似 "A a[2][1] = std::move(new A);"
+			{
+				ret = findPairCharBackStop(p1, p21 - p1 + 1, p21, '[', ']', ";#{}", p21);
+				if (ret == 0)
+				{
+					p21--;
+					ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
+					if (ret == 0)
+					{
+						//FIXME:
+					}
+				}
+			}
+		}
 
 		classInstance.functionReturnValue.start = p21;
 		classInstance.functionReturnValue.fileOffsetOfStart = p21 - p11;
@@ -2411,6 +2687,44 @@ int CFuncRoute::findQueryStrBackStop(unsigned char *buffer, int bufferSize, unsi
 }
 
 
+int CFuncRoute::findQueryStrForwardStop(unsigned char *buffer, int bufferSize, unsigned char *leftPos, char *queryStr, char *stopChar, unsigned char *&rightPos)
+{
+	int ret = 0;
+
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = NULL;
+	unsigned char *p22 = NULL;
+	int flag = 0;
+	int queryStrLen = strlen(queryStr);
+	int stopCharLen = strlen(stopChar);
+
+	p21 = leftPos;
+	p3 -= queryStrLen;
+	while (p21 <= p3)
+	{
+		for (int i = 0; i < stopCharLen; ++i)
+		{
+			if (*p21 == stopChar[i]) //遇到停止字符，则返回失败
+			{
+				return -1;
+			}
+		}
+
+		if (memcmp(p21, queryStr, queryStrLen) == 0)
+		{
+			leftPos = p21;
+			return 0;
+		}
+
+		p21++;
+	}
+
+	return -1;
+}
+
+
 int CFuncRoute::findVarDeclareForward(unsigned char *buffer, int bufferSize, std::string queryStr, std::string &varDeclareType)
 {
 	int ret = 0;
@@ -2457,11 +2771,19 @@ int CFuncRoute::findVarDeclareBack(unsigned char *buffer, int bufferSize, std::s
 
 							sp.end = p21;
 
-							if (*p21 == '>') //类似 std::vector<std::string> a;
+							if (*p21 == '>')
 							{
-								ret = findPairCharBack(p1, p21 - p1 + 1, p21, '<', '>', p21);
-								RETURN_IF_FAILED(ret, ret);
-								p21--;
+								if (p21 - 1 >= p1 && *(p21 - 1) == '-') //类似 p->m_a.get();
+								{
+									p21 -= 2;
+									continue;
+								}
+								else
+								{
+									ret = findPairCharBack(p1, p21 - p1 + 1, p21, '<', '>', p21); //类似 std::vector<std::string> a;
+									RETURN_IF_FAILED(ret, ret);
+									p21--;
+								}
 							}
 
 							ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
@@ -2796,231 +3118,6 @@ int CFuncRoute::splitParentsClass(unsigned char *buffer, int bufferSize, std::ve
 	return ret;
 }
 
-/*
-int CFuncRoute::findAllMemberVarsInClassDeclare(unsigned char *buffer, int bufferSize, CLASS_STRUCT &classes, unsigned char *bufferBase, int lineNumberBase)
-{
-	int ret = 0;
-
-	unsigned char *p1 = buffer;
-	unsigned char *p11 = bufferBase;
-	unsigned char *p2 = buffer;
-	unsigned char *p3 = buffer + bufferSize - 1;
-	unsigned char *p21 = NULL;
-	unsigned char *p22 = NULL;
-	unsigned char *p23 = NULL;
-	int lineNumber = lineNumberBase;
-	int lineNumberTemp = lineNumber;
-	bool ret2 = false;
-
-	if (*p2 == '{') //跳过第一个字符是左大括号的情况
-	{
-		p2++;
-	}
-
-	//--------在类/结构体的声明语句块内部，提取出所有声明的成员变量---------------
-	while (p2 <= p3)
-	{
-		//--------跳过函数块-----------------
-		int curlyBracesFlag = 0; //花括号
-
-		if (*p2 == '{')
-		{
-			while (p2 <= p3)
-			{
-				if (*p2 == '{')
-				{
-					curlyBracesFlag++;
-				}else if (*p2 == '}')
-				{
-					if (curlyBracesFlag == 0)
-					{
-						break;
-					}
-					else
-					{
-						curlyBracesFlag--;
-					}
-				}
-				else if (*p2 == '\n')
-				{
-					lineNumber++;
-				}
-				p2++;
-			}
-
-			p2++;
-			if (p2 >= p3)
-			{
-				break;
-			}
-
-			p1 = p2; //更新 p1 的值
-		}
-
-		//---------------------
-		if (*p2 == ';') //每个变量的声明都必须以分号';'结束
-		{
-			//-----向前搜索整条语句----
-			int equalSignFlag = 0; //等号
-			int parenthesesLeftFlag = 0; //左小括号
-			int parenthesesRightFlag = 0; //右小括号
-
-			p21 = p2 - 1;
-			p22 = p21;
-
-			while (p21 >= p1)
-			{
-				if (((*p21 == ';') //上一条语句结尾
-					|| (*p21 == '{') //语句块开始
-					|| (*p21 == '}') //语句块结束
-					|| (*p21 == ':') //类似 "public: A a;"
-					//|| (*p21 == ')') //类似 if(b) A a; 但这种写法，是没有任何意义的
-					)) //C++ 函数名和变量命名规则，数字 + 字母 + 下划线
-				{
-					break;
-				}
-				else if (*p21 == '=') //类似 virtual int func1() = 0; 或者 int operator=(int &i); 或者比较奇葩的写法 class A {int m_a = 0;}; 即在类中声明时，初始化成员变量
-				{
-					equalSignFlag++;
-				}
-				else if (*p21 == ')') //类似 int func2();
-				{
-					parenthesesLeftFlag++;
-				}
-				else if (*p21 == ')') //类似 int func2();
-				{
-					parenthesesRightFlag++;
-				}
-				else if (*p21 == '\n')
-				{
-					lineNumber--;
-				}
-
-				p21--;
-			}
-
-			//--------判断是函数声明还是变量声明------------
-			if (p21 >= p1 && p21 < p22)
-			{
-				if (parenthesesLeftFlag > 0 && parenthesesRightFlag > 0 && parenthesesLeftFlag == parenthesesRightFlag) //说明是函数声明
-				{
-					//do nothing
-				}
-				else //说明是变量声明，类似：unsgned int m_a;
-				{
-					if (equalSignFlag == 0)
-					{
-						VAR_DECLARE var;
-						memset(&var, 0, sizeof(VAR_DECLARE));
-
-						p23 = p21 + 1;
-						p21 = p22;
-						lineNumberTemp = lineNumber;
-
-						while (p21 >= p23 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
-						{
-							if (*p21 == '\n')
-							{
-								lineNumber--;
-							}
-							p21--;
-						}
-
-						if (p21 >= p23)
-						{
-							//----查找变量名----
-							var.varName.end = p21;
-							var.varName.fileOffsetOfEnd = var.varName.end - p11;
-							var.varName.lineNumberOfEnd = lineNumber;
-
-							p22 = p21;
-
-							while (p21 >= p23)
-							{
-								if (!((*p21 >= '0' && *p21 <= '9')
-									|| (*p21 >= 'a' && *p21 <= 'z')
-									|| (*p21 >= 'A' && *p21 <= 'Z')
-									|| (*p21 == '_')
-									)) //C++ 函数名和变量命名规则，数字 + 字母 + 下划线
-								{
-									break;
-								}
-								p21--;
-							}
-
-							if (p21 >= p23 && p21 < p22)
-							{
-								var.varName.start = p21 + 1;
-								var.varName.fileOffsetOfStart = var.varName.start - p11;
-								var.varName.lineNumberOfStart = lineNumber;
-								var.varName.length = var.varName.end - var.varName.start + 1;
-
-								var.varName.copyStrFromBuffer();
-
-								//-------继续查找变量类型名----------
-								while (p21 >= p23 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
-								{
-									if (*p21 == '\n')
-									{
-										lineNumber--;
-									}
-									p21--;
-								}
-
-								if (p21 >= p23)
-								{
-									var.varType.end = p21;
-									var.varType.fileOffsetOfEnd = var.varType.end - p11;
-									var.varType.lineNumberOfEnd = lineNumber;
-
-									p21 = p23;
-									lineNumber = lineNumberTemp;
-
-									while (p21 >= p23 && (*p21 == ' ' || *p21 == '\t' || *p21 == '\r' || *p21 == '\n')) //跳过空白字符
-									{
-										if (*p21 == '\n')
-										{
-											lineNumber++;
-										}
-										p21++;
-									}
-
-									if (p21 <= var.varType.end)
-									{
-										var.varType.start = p21;
-										var.varType.fileOffsetOfStart = var.varType.start - p11;
-										var.varType.lineNumberOfStart = lineNumber;
-										var.varType.length = var.varType.end - var.varType.start + 1;
-
-										var.varType.copyStrFromBuffer();
-
-										classes.memberVars.push_back(var);
-
-										p1 = p2; //更新 p1 的值
-									}
-								}
-							}
-						}
-					}
-					else
-					{
-						printf("%s(%d): WARN: not suppport like 'class A {int m_a = 0;};'\n", __FUNCTION__, __LINE__);
-					}
-				}
-			}
-		}
-		
-		if (*p2 == '\n')
-		{
-			lineNumber++;
-		}
-
-		p2++;
-	}
-
-	return ret;
-}
-*/
 
 int CFuncRoute::findAllMemberVarsInClassDeclare(unsigned char *buffer, int bufferSize, CLASS_STRUCT &classes, unsigned char *bufferBase, int lineNumberBase)
 {
