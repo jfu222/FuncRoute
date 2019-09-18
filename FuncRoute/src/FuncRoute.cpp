@@ -305,8 +305,8 @@ int CFuncRoute::search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSi
 	ret = replaceAllCodeCommentsBySpace(buffer2, bufferSize);
 	RETURN_IF_FAILED(ret, -2);
 	
-	static int cnt = 0;
-	char file22[600] = "";
+//	static int cnt = 0;
+//	char file22[600] = "";
 //	sprintf(file22, "./out%d.txt", cnt++);
 //	ret = dumpBufferToFile(buffer2, bufferSize, file22);
 
@@ -318,11 +318,11 @@ int CFuncRoute::search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSi
 //	ret = dumpBufferToFile(buffer2, bufferSize, file22);
 
 	//------将所有#define宏用空格' '代替--------
-//	ret = replaceAllMacroDefineStrBySpace(buffer2, bufferSize);
-//	RETURN_IF_FAILED(ret, -3);
+	ret = replaceAllMacroDefineStrBySpace(buffer2, bufferSize);
+	RETURN_IF_FAILED(ret, -3);
 	
-	sprintf(file22, "./out%d.txt", cnt++);
-	ret = dumpBufferToFile(buffer2, bufferSize, file22);
+//	sprintf(file22, "./out%d.txt", cnt++);
+//	ret = dumpBufferToFile(buffer2, bufferSize, file22);
 
 	//------查找所有的C++类名(关键字class, struct)--------
 	char classKeyword[] = "class";
@@ -1026,7 +1026,7 @@ int CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferS
 	//------先将被注释掉的代码用空格' '代替（换行号符'\n'保留）--------
 	while (p2 <= p3)
 	{
-		//双引号内部的双斜杠不代表注释的意思，需要跳过
+/*		//双引号内部的双斜杠不代表注释的意思，需要跳过
 		if (*p2 == '"')
 		{
 			p21 = p2 + 1;
@@ -1058,7 +1058,7 @@ int CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferS
 				p21++;
 			}
 		}
-
+*/
 		if (*p2 == '/') //被斜线(oblique line)"/"注释掉的字符串
 		{
 			p21 = p2;

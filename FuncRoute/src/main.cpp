@@ -3,15 +3,18 @@
 #include "version.h"
 
 
-int print_help(int argc, char *argv[])
+int printHelp(int argc, char *argv[])
 {
-	printf("====== Function-Route Version: %s ======\n\n", VERSION_STR3(VERSION_STR));
+	printf("====== Function-Route Version: %s ======\n", VERSION_STR3(VERSION_STR));
+	printf("====== Author: jfu2 ======\n");
+	printf("====== Email: 386520874@qq.com ======\n");
+	printf("====== Date: 2019.09.18 ======\n\n");
 
 	printf("Usage:\n");
-	printf("%s <in|dirs_include> [in|dirs_exclude]\n", argv[0]);
+	printf("  %s <in|dirs_include> [in|dirs_exclude]\n", argv[0]);
 	printf("For Example:\n");
-	printf("%s ./data1/src;./data2\n", argv[0]);
-	printf("%s ./data1/src;./data2 ./data1/src/include;./data2/include\n", argv[0]);
+	printf("  %s ./data1/src;./data2\n", argv[0]);
+	printf("  %s ./data1/src;./data2 ./data1/src/include;./data2/include\n", argv[0]);
 
 	return 0;
 }
@@ -25,7 +28,7 @@ int main(int argc, char *argv[])
 
 	if (argc != 2 && argc != 3)
 	{
-		print_help(argc, argv);
+		printHelp(argc, argv);
 		return -1;
 	}
 
