@@ -5,6 +5,10 @@
 #include <vector>
 
 
+char cpp_keywords[][25] =
+{
+};
+
 typedef enum _CPP_STEP_
 {
 	/*
@@ -13,22 +17,16 @@ typedef enum _CPP_STEP_
 	CPP_STEP0_UNKNOWN = 0,    //未知语法元素
 
 	/*
-	* 由连续的 数字+字母+下划线 组成的单词
+	* 步骤1：将原始代码，利用空白字符，分割成连续的 数字+字母+下划线 组成的单词
 	*/
 	CPP_STEP1_WORD_UNKNOWN,              //单词类型：未知，像运算符 +,-,*,/,,%,!,?,~,=,==,<,<=,=>,>,<<,>>,&,|,,||,^,//,/*,*/,",',#,;,:,::,[,],...这些 非 数字+字母+下划线 被归为此类
 	CPP_STEP1_WORD_KEYWORD,              //单词类型：C/C++关键词 char,int,short,long,float,double,unsigned,if,else,for,do,while,private,protected,public,new,delete,class,struct,...
-	CPP_STEP1_WORD_UNKNOWN_NAME,         //单词类型：未知名称
-	CPP_STEP1_WORD_CLASS_NAME,           //单词类型：类名
-	CPP_STEP1_WORD_STRUCT_NAME,          //单词类型：结构体名
-	CPP_STEP1_WORD_VAR_NAME,             //单词类型：变量名
-	CPP_STEP1_WORD_FUNCTION_NAME,        //单词类型：函数名
-	CPP_STEP1_WORD_ENUM_NAME,            //单词类型：枚举名
-	CPP_STEP1_WORD_UNION_NAME,           //单词类型：共用体名
-	CPP_STEP1_WORD_ARRAY_NAME,           //单词类型：数组名
+	CPP_STEP1_WORD_UNKNOWN_STR,          //单词类型：未知字符串
 
 	/*
-	* 将 CPP_STEP1 已经归类的单词进一步两两配对，组合成更高一级的词法单元
+	* 步骤2：将 CPP_STEP1 已经归类的单词进一步两两配对，组合成更高一级的词法单元
 	*/
+	CPP_STEP2_WORDS_UNKNOWN,                     //词法单元：未知词语
 	CPP_STEP2_WORDS_COMMENT_SINGLE_LINE,         //词法单元：代码的单行注释关键词 "//"
 	CPP_STEP2_WORDS_COMMENT_MULTI_LINE,          //词法单元：代码的多行注释关键词 "/*...*/"
 	CPP_STEP2_WORDS_PREPROCESSOR_UNKNOWN,        //词法单元：未知预处理命令 像 "#__has_include" 这些C++17定义的预处理命令，被归为此类
@@ -45,14 +43,119 @@ typedef enum _CPP_STEP_
 	CPP_STEP2_WORDS_PREPROCESSOR_ERROR,          //词法单元：预处理命令 "#error"
 	CPP_STEP2_WORDS_PREPROCESSOR_PRAGMA,         //词法单元：预处理命令 "#pragma"
 	CPP_STEP2_WORDS_PREPROCESSOR_DEFINED,        //词法单元：预处理命令 "#defined"
-	CPP_STEP2_WORDS_KEYWORDS,                    //词法单元：将连续的两个以上的关键词组成一组，类似 "static unsigned long long"
+	CPP_STEP2_KEYWORD_ALIGNAS,                   //词法单元： "alignas", //(C++11 起)
+	CPP_STEP2_KEYWORD_ALIGGNOF,                  //词法单元： "alignof", //(C++11 起)
+	CPP_STEP2_KEYWORD_AND,                       //词法单元： "and",
+	CPP_STEP2_KEYWORD_AND_EQ,                    //词法单元： "and_eq",
+	CPP_STEP2_KEYWORD_ASM,                       //词法单元： "asm",
+	CPP_STEP2_KEYWORD_ATOMIC_CANCEL,             //词法单元： "atomic_cancel", //(TM TS)
+	CPP_STEP2_KEYWORD_ATOMIC_COMMIT,             //词法单元： "atomic_commit", //(TM TS)
+	CPP_STEP2_KEYWORD_ATOMIC_NOEXCEPT,           //词法单元： "atomic_noexcept", //(TM TS)
+	CPP_STEP2_KEYWORD_AUTO,                      //词法单元： "auto",
+	CPP_STEP2_KEYWORD_BITAND,                    //词法单元： "bitand",
+	CPP_STEP2_KEYWORD_BITOR,                     //词法单元： "bitor",
+	CPP_STEP2_KEYWORD_BOOL,                      //词法单元： "bool",
+	CPP_STEP2_KEYWORD_BREAK,                     //词法单元： "break",
+	CPP_STEP2_KEYWORD_CASE,                      //词法单元： "case",
+	CPP_STEP2_KEYWORD_CATCH,                     //词法单元： "catch",
+	CPP_STEP2_KEYWORD_CHAR,                      //词法单元： "char",
+	CPP_STEP2_KEYWORD_CHAR8_T,                   //词法单元： "char8_t", //(C++20 起)
+	CPP_STEP2_KEYWORD_CHAR16_T,                  //词法单元： "char16_t", //(C++11 起)
+	CPP_STEP2_KEYWORD_CHAR32_T,                  //词法单元： "char32_t", //(C++11 起)
+	CPP_STEP2_KEYWORD_CLASS,                     //词法单元： "class",
+	CPP_STEP2_KEYWORD_COMPL,                     //词法单元： "compl",
+	CPP_STEP2_KEYWORD_CONCEPT,                   //词法单元： "concept", //(C++20 起)
+	CPP_STEP2_KEYWORD_CONST,                     //词法单元： "const",
+	CPP_STEP2_KEYWORD_CONSTEVAL,                 //词法单元： "consteval", //(C++20 起)
+	CPP_STEP2_KEYWORD_CONSTEXPR,                 //词法单元： "constexpr", //(C++11 起)
+	CPP_STEP2_KEYWORD_CONSTINIT,                 //词法单元： "constinit", //(C++20 起)
+	CPP_STEP2_KEYWORD_CONST_CAST,                //词法单元： "const_cast",
+	CPP_STEP2_KEYWORD_CONTINUE,                  //词法单元： "continue",
+	CPP_STEP2_KEYWORD_CO_AWAIT,                  //词法单元： "co_await", //(C++20 起)
+	CPP_STEP2_KEYWORD_CO_RETURN,                 //词法单元： "co_return", //(C++20 起)
+	CPP_STEP2_KEYWORD_CO_YIELD,                  //词法单元： "co_yield", //(C++20 起)
+	CPP_STEP2_KEYWORD_DECLTYPE,                  //词法单元： "decltype", //(C++11 起)
+	CPP_STEP2_KEYWORD_DEFAULT,                   //词法单元： "default",
+	CPP_STEP2_KEYWORD_DELETE,                    //词法单元： "delete",
+	CPP_STEP2_KEYWORD_DO,                        //词法单元： "do",
+	CPP_STEP2_KEYWORD_DOUBLE,                    //词法单元： "double",
+	CPP_STEP2_KEYWORD_DYNAMIC_CAST,              //词法单元： "dynamic_cast",
+	CPP_STEP2_KEYWORD_ELSE,                      //词法单元： "else",
+	CPP_STEP2_KEYWORD_ENUM,                      //词法单元： "enum",
+	CPP_STEP2_KEYWORD_EXPLICIT,                  //词法单元： "explicit",
+	CPP_STEP2_KEYWORD_EXPORT,                    //词法单元： "export",
+	CPP_STEP2_KEYWORD_EXTERN,                    //词法单元： "extern",
+	CPP_STEP2_KEYWORD_FALSE,                     //词法单元： "false",
+	CPP_STEP2_KEYWORD_FLOAT,                     //词法单元： "float",
+	CPP_STEP2_KEYWORD_FOR,                       //词法单元： "for",
+	CPP_STEP2_KEYWORD_FRIEND,                    //词法单元： "friend",
+	CPP_STEP2_KEYWORD_GOTO,                      //词法单元： "goto",
+	CPP_STEP2_KEYWORD_IF,                        //词法单元： "if",
+	CPP_STEP2_KEYWORD_INLINE,                    //词法单元： "inline",
+	CPP_STEP2_KEYWORD_INT,                       //词法单元： "int",
+	CPP_STEP2_KEYWORD_LONG,                      //词法单元： "long",
+	CPP_STEP2_KEYWORD_MUTABLE,                   //词法单元： "mutable",
+	CPP_STEP2_KEYWORD_NAMESPACE,                 //词法单元： "namespace",
+	CPP_STEP2_KEYWORD_NEW,                       //词法单元： "new",
+	CPP_STEP2_KEYWORD_NOEXCEPT,                  //词法单元： "noexcept", //(C++11 起)
+	CPP_STEP2_KEYWORD_NOT,                       //词法单元： "not",
+	CPP_STEP2_KEYWORD_NOT_EQ,                    //词法单元： "not_eq",
+	CPP_STEP2_KEYWORD_NULLPTR,                   //词法单元： "nullptr", //(C++11 起)
+	CPP_STEP2_KEYWORD_OPERATOR,                  //词法单元： "operator",
+	CPP_STEP2_KEYWORD_OR,                        //词法单元： "or",
+	CPP_STEP2_KEYWORD_OR_EQ,                     //词法单元： "or_eq",
+	CPP_STEP2_KEYWORD_PRIVATE,                   //词法单元： "private",
+	CPP_STEP2_KEYWORD_PROTECTED,                 //词法单元： "protected",
+	CPP_STEP2_KEYWORD_PUBLIC,                    //词法单元： "public",
+	CPP_STEP2_KEYWORD_REFLEXPR,                  //词法单元： "reflexpr", //(反射 TS)
+	CPP_STEP2_KEYWORD_REGISTER,                  //词法单元： "register",
+	CPP_STEP2_KEYWORD_REINTERPRET_CAST,          //词法单元： "reinterpret_cast",
+	CPP_STEP2_KEYWORD_REQUIRES,                  //词法单元： "requires", //(C++20 起)
+	CPP_STEP2_KEYWORD_RETURN,                    //词法单元： "return",
+	CPP_STEP2_KEYWORD_SHORT,                     //词法单元： "short",
+	CPP_STEP2_KEYWORD_SIGNED,                    //词法单元： "signed",
+	CPP_STEP2_KEYWORD_SIZEOF,                    //词法单元： "sizeof",
+	CPP_STEP2_KEYWORD_STATIC,                    //词法单元： "static",
+	CPP_STEP2_KEYWORD_STATIC_ASSERT,             //词法单元： "static_assert", //(C++11 起)
+	CPP_STEP2_KEYWORD_STATIC_CAST,               //词法单元： "static_cast",
+	CPP_STEP2_KEYWORD_STRUCT,                    //词法单元： "struct",
+	CPP_STEP2_KEYWORD_SWITCH,                    //词法单元： "switch",
+	CPP_STEP2_KEYWORD_SYNCHRONIZED,              //词法单元： "synchronized", //(TM TS)
+	CPP_STEP2_KEYWORD_TEMPLATE,                  //词法单元： "template",
+	CPP_STEP2_KEYWORD_THIS,                      //词法单元： "this",
+	CPP_STEP2_KEYWORD_THREAD_LOCAL,              //词法单元： "thread_local", //(C++11 起)
+	CPP_STEP2_KEYWORD_THROW,                     //词法单元： "throw",
+	CPP_STEP2_KEYWORD_TRUE,                      //词法单元： "true",
+	CPP_STEP2_KEYWORD_TRY,                       //词法单元： "try",
+	CPP_STEP2_KEYWORD_TYPEDEF,                   //词法单元： "typedef",
+	CPP_STEP2_KEYWORD_TYPEID,                    //词法单元： "typeid",
+	CPP_STEP2_KEYWORD_TYPENAME,                  //词法单元： "typename",
+	CPP_STEP2_KEYWORD_UNION,                     //词法单元： "union",
+	CPP_STEP2_KEYWORD_UNSIGNED,                  //词法单元： "unsigned",
+	CPP_STEP2_KEYWORD_USING,                     //词法单元： "using",
+	CPP_STEP2_KEYWORD_VIRTUAL,                   //词法单元： "virtual",
+	CPP_STEP2_KEYWORD_VOID,                      //词法单元： "void",
+	CPP_STEP2_KEYWORD_VOLATILE,                  //词法单元： "volatile",
+	CPP_STEP2_KEYWORD_WCHAR_T,                   //词法单元： "wchar_t",
+	CPP_STEP2_KEYWORD_WHILE,                     //词法单元： "while",
+	CPP_STEP2_KEYWORD_XOR,                       //词法单元： "xor",
+	CPP_STEP2_KEYWORD_XOR_EQ,                    //词法单元： "xor_eq",
 	CPP_STEP2_WORDS_OPERATOR_PAIR,               //词法单元：将配对的运算符组成一组，类似 "()","{}","[]","<>",...
 
 	/*
-	* 在 CPP_STEP2 的基础上，将相近的词法单元连接起来，组成一条单独的语句，类似 "int a;","int a = 0;","class A {};","int A::get(){}"，组合成更高一级的句法单元
+	* 在 CPP_STEP2 的基础上，将相近的词法单元连接起来，组成一条单独的语句，
+	* 并将每个词法单元进行分类
 	*/
 	CPP_STEP3_STATEMENT_UNKNOWN,                       //句法单元：未知
 	CPP_STEP3_STATEMENT_END_SYMBOL,                    //句法单元：语句结束符，类似 "int a;" 中的";"
+	CPP_STEP3_STATEMENT_DECLARE_TYPE,                  //句法单元：变量的声明类型，例如 "static unsigned long long"
+	CPP_STEP3_STATEMENT_CLASS_NAME,                    //句法单元：类名
+	CPP_STEP3_STATEMENT_STRUCT_NAME,                   //句法单元：结构体名
+	CPP_STEP3_STATEMENT_VAR_NAME,                      //句法单元：变量名
+	CPP_STEP3_STATEMENT_FUNCTION_NAME,                 //句法单元：函数名
+	CPP_STEP3_STATEMENT_ENUM_NAME,                     //句法单元：枚举名
+	CPP_STEP3_STATEMENT_UNION_NAME,                    //句法单元：共用体名
+	CPP_STEP3_STATEMENT_ARRAY_NAME,                    //句法单元：数组名
 	CPP_STEP3_STATEMENT_VAR_DECLARE,                   //句法单元：变量声明，类似 "int a;" 中的"a"
 	CPP_STEP3_STATEMENT_CLASS_DECLARE,                 //句法单元：C++类声明，类似 "class A : public B {};"
 	CPP_STEP3_STATEMENT_STRUCT_DECLARE,                //句法单元：C++结构体声明，类似 "typedef struct _A_ {}A;"

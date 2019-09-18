@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\FuncRoute.cpp" />
+    <ClCompile Include="src\FuncRoute2.cpp" />
     <ClCompile Include="src\Help.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\os\linux\LogFile_linux.cpp" />
@@ -35,6 +36,7 @@
     <ClInclude Include="src\CKeyword.h" />
     <ClInclude Include="src\CPPKeyword.h" />
     <ClInclude Include="src\FuncRoute.h" />
+    <ClInclude Include="src\FuncRoute2.h" />
     <ClInclude Include="src\os\LogFile.h" />
     <ClInclude Include="src\os\share_library.h" />
     <ClInclude Include="src\os\thread.h" />
