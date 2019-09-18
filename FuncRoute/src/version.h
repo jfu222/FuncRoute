@@ -2,7 +2,7 @@
 #define __VERSION_H__
 
 
-#define MAJOR_VERSION    1
+#define MAJOR_VERSION    2
 #define MINOR1_VERSION   0
 #define MINOR2_VERSION   0
 #define MINOR3_VERSION   1
