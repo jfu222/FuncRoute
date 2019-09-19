@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "./os/share_library.h"
-#include "CPPKeyword.h"
-#include "CKeyword.h"
+//#include "CPPKeyword.h"
+//#include "CKeyword.h"
 
 
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))

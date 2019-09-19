@@ -5,10 +5,6 @@
 #include <vector>
 
 
-char cpp_keywords[][25] =
-{
-};
-
 typedef enum _CPP_STEP_
 {
 	/*
@@ -17,16 +13,21 @@ typedef enum _CPP_STEP_
 	CPP_STEP0_UNKNOWN = 0,    //未知语法元素
 
 	/*
-	* 步骤1：将原始代码，利用空白字符，分割成连续的 数字+字母+下划线 组成的单词
+	* 步骤1：将原始C/C++代码中的字符，分成四类:
+	*       第一类：空白字符，包含 ' ','\t','\r','\n'
+	*       第二类：单词，分割成连续的 数字+字母+下划线 组成的字符串
+	*       第三类：运算符，包含 +,-,*,/,,%,!,?,~,=,==,<,<=,=>,>,<<,>>,&,|,,||,^,//,/*,* /, ",',#,;,:,::,[,],.,->,...等等
+	*       第四类：未知字符，不属于上面三类中任何一类的字符 character
 	*/
-	CPP_STEP1_WORD_UNKNOWN,              //单词类型：未知，像运算符 +,-,*,/,,%,!,?,~,=,==,<,<=,=>,>,<<,>>,&,|,,||,^,//,/*,*/,",',#,;,:,::,[,],...这些 非 数字+字母+下划线 被归为此类
-	CPP_STEP1_WORD_KEYWORD,              //单词类型：C/C++关键词 char,int,short,long,float,double,unsigned,if,else,for,do,while,private,protected,public,new,delete,class,struct,...
-	CPP_STEP1_WORD_UNKNOWN_STR,          //单词类型：未知字符串
+	CPP_STEP1_CHARACTER_UNKNOWN,              //字符类型：未知字符，像中文汉字被归为此类
+	CPP_STEP1_CHARACTER_WHITESPACE,           //字符类型：空白字符，包含 ' ','\t','\r','\n'
+	CPP_STEP1_CHARACTER_STR,                  //字符类型：单词，分割成连续的 数字+字母+下划线 组成的字符串
+	CPP_STEP1_CHARACTER_OPERRATOR,            //字符类型：运算符，包含 +,-,*,/,,%,!,?,~,=,==,<,<=,=>,>,<<,>>,&,|,,||,^,//,/*,* /, ",',#,;,:,::,[,],.,->,...等等
 
 	/*
-	* 步骤2：将 CPP_STEP1 已经归类的单词进一步两两配对，组合成更高一级的词法单元
+	* 步骤2：将 CPP_STEP1 已经归类的单词和运算符进一步两两配对分类，组合成更高一级的词法单元
 	*/
-	CPP_STEP2_WORDS_UNKNOWN,                     //词法单元：未知词语
+	CPP_STEP2_WORDS_UNKNOWN,                     //词法单元：未知单词
 	CPP_STEP2_WORDS_COMMENT_SINGLE_LINE,         //词法单元：代码的单行注释关键词 "//"
 	CPP_STEP2_WORDS_COMMENT_MULTI_LINE,          //词法单元：代码的多行注释关键词 "/*...*/"
 	CPP_STEP2_WORDS_PREPROCESSOR_UNKNOWN,        //词法单元：未知预处理命令 像 "#__has_include" 这些C++17定义的预处理命令，被归为此类
@@ -140,11 +141,16 @@ typedef enum _CPP_STEP_
 	CPP_STEP2_KEYWORD_WHILE,                     //词法单元： "while",
 	CPP_STEP2_KEYWORD_XOR,                       //词法单元： "xor",
 	CPP_STEP2_KEYWORD_XOR_EQ,                    //词法单元： "xor_eq",
+	CPP_STEP2_OPERATOR_PLUS,                     //词法单元：加号（或正号）'+'
+	CPP_STEP2_OPERATOR_MINUS,                    //词法单元：减号（或负号/指针调用->）'-'
+	CPP_STEP2_OPERATOR_MULTIPLE,                 //词法单元：乘号（或指针符号"int *a;"）'*'
+	CPP_STEP2_OPERATOR_DIVISION,                 //词法单元：除号（或注释符号"//"）'/'
+	CPP_STEP2_OPERATOR_EQUAL,                    //词法单元：等号（或小于等于符号"<="）'='
 	CPP_STEP2_WORDS_OPERATOR_PAIR,               //词法单元：将配对的运算符组成一组，类似 "()","{}","[]","<>",...
 
 	/*
-	* 在 CPP_STEP2 的基础上，将相近的词法单元连接起来，组成一条单独的语句，
-	* 并将每个词法单元进行分类
+	* 步骤3：在 CPP_STEP2 的基础上，将相近的词法单元连接起来，组成一条单独的语句，
+	*       并将每个词法单元进行分类
 	*/
 	CPP_STEP3_STATEMENT_UNKNOWN,                       //句法单元：未知
 	CPP_STEP3_STATEMENT_END_SYMBOL,                    //句法单元：语句结束符，类似 "int a;" 中的";"
@@ -180,7 +186,7 @@ typedef enum _CPP_STEP_
 	CPP_STEP3_STATEMENT_MACRO_BODY,                    //句法单元：宏定义的体，类似 "#define PI 3.1415926" 中的"3.1415926"
 
 	/*
-	* 在 CPP_STEP3 的基础上，将一条单独的语句，解释成抽象的语义
+	* 步骤4：在 CPP_STEP3 的基础上，将一条单独的语句，解释成抽象的语义
 	*/
 	CPP_STEP4_SEMANTICS_UNKNOWN,                      //语义单元：未知
 	CPP_STEP4_SEMANTICS_NORMAL_VAR,                   //语义单元：普通变量，类似 "int a;"
@@ -213,6 +219,7 @@ typedef struct _STRING_POSITON2_
 	int lineNumberOfEnd;
 	int length;
 	char str[1024];
+	CPP_STEP step;
 
 public:
 	int copyStrFromBuffer()
