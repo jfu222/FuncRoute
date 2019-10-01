@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <queue>
 
 
 typedef enum _VAR_TYPE_
@@ -250,6 +251,188 @@ public:
 }FUNCTIONS;
 
 
+typedef struct _FUNC_INDEX_
+{
+	int index1;
+	int index2;
+	int funcIndex;
+	int treeDepth;
+	int refCount;
+	std::vector<_FUNC_INDEX_ *> parentIndexs; //同一个函数可能被好几个函数调用
+	std::vector<_FUNC_INDEX_ *> childrenIndexs; //该函数调用了哪些其他函数（可以自己调用自己）
+
+public:
+	bool isRecursiveFunction(int funcIndex) //是否是递归函数
+	{
+		int len = parentIndexs.size();
+		if(len == 0)
+		{
+			return false;
+		}else
+		{
+			for(int i = 0; i < len; ++i)
+			{
+				if(parentIndexs[i]->funcIndex == funcIndex)
+				{
+					return true;
+				}else
+				{
+					bool ret = parentIndexs[i]->isRecursiveFunction(funcIndex);
+					if(ret == true)
+					{
+						return true;
+					}
+				}
+			}
+		}
+		
+		return false;
+	}
+	
+	int freeMem()
+	{
+		int len1 = childrenIndexs.size();
+		for(int i = 0; i < len1; ++i)
+		{
+			if(childrenIndexs[i])
+			{
+				childrenIndexs[i]->freeMem();
+				free(childrenIndexs[i]);
+				childrenIndexs[i] = NULL;
+			}
+		}
+		return 0;
+	}
+	
+	int printInfo()
+	{
+		int ret = 0;
+
+		std::vector<_FUNC_INDEX_ *> stack;
+		std::vector<int> stackParent;
+		std::vector<int> stackDepth;
+
+		//---------------------------------
+		printf("==========\n");
+		stack.push_back(this);
+		stackParent.push_back(this->funcIndex);
+		stackDepth.push_back(1);
+		
+		while (stack.empty() == false)
+		{
+			_FUNC_INDEX_ *node = stack.front();
+			int parentIndex = stackParent.front();
+			int depth = stackDepth.front();
+
+			stack.erase(stack.begin());
+			stackParent.erase(stackParent.begin());
+			stackDepth.erase(stackDepth.begin());
+
+			if(stack.empty() == true)
+			{
+				printf("%d\n", node->funcIndex); //换行
+			}else
+			{
+				//---------------------
+				if (parentIndex == stackParent[0]) //共同的父节点
+				{
+					printf("%d-", node->funcIndex);
+				} else //非共同的父节点
+				{
+					if (depth == stackDepth[0]) //深度相等
+					{
+						printf("%d ", node->funcIndex);
+					} else
+					{
+						printf("%d\n", node->funcIndex);
+					}
+				}
+			}
+			
+			bool bRet = node->isRecursiveFunction(node->funcIndex);
+			if(bRet == false) //不是递归函数
+			{
+				int len = node->childrenIndexs.size();
+				for(int i = 0; i < len; ++i)
+				{
+					stack.push_back(node->childrenIndexs[i]);
+					stackParent.push_back(node->funcIndex);
+					stackDepth.push_back(depth + 1);
+				}
+			}
+		}
+		printf("\n");
+		return 0;
+	}
+
+	int printInfoFuncRoute(std::vector<_FUNC_INDEX_ *> &funcs)
+	{
+		int ret = 0;
+		
+		int len1 = this->childrenIndexs.size();
+		int len2 = funcs.size();
+		bool bRet = this->isRecursiveFunction(this->funcIndex);
+
+		if(len1 == 0 || bRet == true)
+		{
+			if(len2 != 0)
+			{
+				printf("[");
+				for (int i = 0; i < len2; ++i)
+				{
+					if(i == len2 - 1)
+					{
+						printf("%d", funcs[i]->funcIndex);
+					}else
+					{
+						printf("%d-", funcs[i]->funcIndex);
+					}
+				}
+				printf("]\n");
+			}else
+			{
+				printf("[%d]\n", this->funcIndex);
+			}
+		}else
+		{
+			if(bRet == false)
+			{
+				for (int i = 0; i < len1; ++i)
+				{
+					funcs.push_back(this->childrenIndexs[i]);
+					this->childrenIndexs[i]->printInfoFuncRoute(funcs);
+					funcs.pop_back();
+				}
+			}
+		}
+
+		return 0;
+	}
+
+}FUNC_INDEX;
+
+
+typedef struct _FUNCS_CALLED_TREE_
+{
+	std::vector<FUNC_INDEX *> funcsIndexs;
+
+public:
+	int freeMem()
+	{
+		int len1 = funcsIndexs.size();
+		for(int i = 0; i < len1; ++i)
+		{
+			int len2 = funcsIndexs[i]->childrenIndexs.size();
+			for(int j = 0; j < len2; ++j)
+			{
+				funcsIndexs[i]->childrenIndexs[j]->freeMem();
+			}
+		}
+		return 0;
+	}
+}FUNCS_CALLED_TREE;
+
+
 typedef struct _MACRO_
 {
 	char macroName[256]; //宏名
@@ -332,6 +515,9 @@ public:
 	int findAllMemberFuncsInClassDeclare(unsigned char *buffer, int bufferSize, CLASS_STRUCT &classes, unsigned char *bufferBase, int lineNumberBase); //在类/结构体的声明语句块内部，提取出所有声明的成员函数
 	bool isFunctionArgsMatch(std::string parameter, std::string functionArgs); //函数的声明的参数列表和函数的调用传入的参数列表是否匹配
 	int statAllFuns(std::vector<FUNCTIONS> &vFunctions); //统计所有函数之间的调用关系
+	int createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNCS_CALLED_TREE &trees); //创建函数调用关系多叉树
+	int createFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, int queryFuncIndex, FUNC_INDEX **&arry, int arryLen); //创建函数调用关系多叉树
+	int getFuncsPos(std::vector<FUNCTIONS> &vFunctions, int queryFuncIndex, int &index1, int &index2); //创建函数调用关系多叉树
 	int dumpBufferToFile(unsigned char *buffer, int bufferSize, char *filename); //将内存数据写到磁盘文件
 	int printInfo(std::vector<FUNCTIONS> &vFunctions);
 };

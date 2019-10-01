@@ -24,6 +24,24 @@ if (condition)                                                                  
 
 using namespace std;
 
+int recursiveFunc(int &a) //递归函数
+{
+	a += 2;
+	if(a >= 10)
+	{
+		return 0;
+	}else
+	{
+		int ret = recursiveFunc(a);
+		if(ret == 0)
+		{
+			return 0;
+		}
+	}
+	return -1;
+}
+
+
 typedef struct _ST_AAAA_
 {
 	unsigned char *a;
@@ -38,10 +56,11 @@ public:
 		std::vector<std::string> files;
 		std::vector<std::string> files2;
 
-		ret = get_nested_dir_files(filePath.c_str(), files);
+		int ret = get_nested_dir_files(filePath.c_str(), files);
 		RETURN_IF_FAILED(ret != 0, ret);
 
 		//---------------------------
+		ret = recursiveFunc(1);
 		int len1 = files.size();
 		return -2;
 	}
@@ -195,6 +214,8 @@ int main(int argc, char *argv[])
 	{
 		printf("%s: Error: ret=%d;\n", __FUNCTION__, ret);
 	}
+	
+		ret = recursiveFunc(1);
 
 	ret = pClassB2->set(3); //测试"->"调用函数
 	ret = pClassB2
@@ -207,6 +228,9 @@ int main(int argc, char *argv[])
 	{
 		printf("%s: Error: ret=%d;\n", __FUNCTION__, ret);
 	}
+	
+	int s = 12;
+	ret = classB.get(a);
 
 	return 0;//这是单行注释
 }
