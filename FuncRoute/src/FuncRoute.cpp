@@ -210,10 +210,10 @@ int CFuncRoute::findAllFunctionsName(std::vector<std::string> dirsInclude, std::
 		size_t read_size = fread(buffer, file_size, 1, fp);
 		if (read_size != 1)
 		{
-			printf("%s: Error: read_size=%d != 1\n", __FUNCTION__, read_size);
+			printf("%s(%d): Error: read_size=%d != 1\n", __FUNCTION__, __LINE__, read_size);
 			fclose(fp);
 			free(buffer);
-			return -6;
+			continue; //有的文件的确是空文件
 		}
 
 		fclose(fp);
@@ -1340,10 +1340,10 @@ int CFuncRoute::findAllMacros(std::vector<std::string> files, std::vector<MACRO>
 		size_t read_size = fread(buffer, file_size, 1, fp);
 		if (read_size != 1)
 		{
-			printf("%s: Error: read_size=%d != 1\n", __FUNCTION__, read_size);
+			printf("%s(%d): Error: read_size=%d != 1\n", __FUNCTION__, __LINE__, read_size);
 			fclose(fp);
 			free(buffer);
-			return -6;
+			return 0;
 		}
 
 		fclose(fp);
@@ -3685,8 +3685,8 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 						for (int j2 = 0; j2 < len4; ++j2)
 						{
 							//---先在成员变量中查找---
-							int len4 = vFunctions[i2].classes[j2].memberVars.size();
-							for (int m2 = 0; m2 < len4; ++m2)
+							int len5 = vFunctions[i2].classes[j2].memberVars.size();
+							for (int m2 = 0; m2 < len5; ++m2)
 							{
 								std::string varName = vFunctions[i2].classes[j2].memberVars[m2].varName.str;
 								std::string varType = vFunctions[i2].classes[j2].memberVars[m2].varType.str;
@@ -3727,8 +3727,8 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 							}
 
 							//---再在成员函数中查找---
-							int len5 = vFunctions[i2].classes[j2].memberFuncs.size();
-							for (int m2 = 0; m2 < len5; ++m2)
+							int len6 = vFunctions[i2].classes[j2].memberFuncs.size();
+							for (int m2 = 0; m2 < len6; ++m2)
 							{
 								std::string functionName51 = vFunctions[i2].classes[j2].memberFuncs[m2].functionName.str;
 								std::string className52 = vFunctions[i2].classes[j2].memberFuncs[m2].className;
@@ -3744,6 +3744,11 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 									flag = 1;
 									break;
 								}
+							}
+
+							if (flag == 1)
+							{
+								break; //已经找到了，就不再继续找了
 							}
 						}
 						
@@ -3780,6 +3785,7 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 					{
 						std::string functionName2 = vFunctions[i2].funcs[j2].functionName.str;
 						std::string className2 = vFunctions[i2].funcs[j2].className;
+						std::string structName2 = vFunctions[i2].funcs[j2].structName;
 						std::string classNameAlias21 = vFunctions[i2].funcs[j2].classNameAlias;
 						std::string functionParameter2 = vFunctions[i2].funcs[j2].functionParameter.str;
 
@@ -3796,6 +3802,7 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 							bool isParent = isParentClass(className1, className2, vFunctions);
 
 							if ((className1 != "" && className2 != "" && (className1 == className2) || isParent == true)
+								|| (className1 != "" && structName2 != "" && className1 == structName2)
 								|| (className1 != "" && classNameAlias21 != "" && className1 == classNameAlias21)
 								|| (className1 == "" && className2 == "" && classNameAlias21 == "")
 								)
@@ -3807,7 +3814,6 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 									vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionIndex = vFunctions[i2].funcs[j2].functionIndex;
 								}
 							}
-//							vFunctions[i].funcs[j].funcsWhichCalledMe[vFunctions[i2].funcs[j2].functionIndex] += 1;
 						}
 					}
 				}
@@ -3858,29 +3864,156 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 					printf("%d", vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionIndex);
 				}
 			}
-/*
-			printf("\t");
-
-			int len4 = vFunctions[i].funcs[j].funcsWhichCalledMe.size();
-			int cnt = 0;
-			std::map<int, int>::iterator it;
-			for (it = vFunctions[i].funcs[j].funcsWhichCalledMe.begin(); it != vFunctions[i].funcs[j].funcsWhichCalledMe.end(); ++it)
-			{
-				if (cnt <= len4 - 1)
-				{
-					printf("%d-%d,", it->first, it->second);
-				}
-				else
-				{
-					printf("%d-%d", it->first, it->second);
-				}
-				cnt++;
-			}*/
 			printf("\n");
 		}
 	}
 
+	//---------------------
+	FUNCS_CALLED_TREE trees;
+	ret = createAllFunsCalledTree(vFunctions, trees);
+
 	return ret;
+}
+
+
+int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNCS_CALLED_TREE &trees)
+{
+	int ret = 0;
+	
+	int taotalFuncs = 1;
+
+	int len1 = vFunctions.size();
+	for (int i = 0; i < len1; ++i)
+	{
+		int len2 = vFunctions[i].funcs.size();
+		taotalFuncs += len2;
+	}
+	
+	FUNC_INDEX ** arry = new FUNC_INDEX *[taotalFuncs];
+	memset(arry, 0, sizeof(FUNC_INDEX *) * taotalFuncs);
+
+	for (int i = 0; i < len1; ++i)
+	{
+		int len2 = vFunctions[i].funcs.size();
+		for (int j = 0; j < len2; ++j)
+		{
+		if(j == 9)
+		{
+			int a = 0;
+		}
+			int queryFuncIndex = vFunctions[i].funcs[j].functionIndex;
+			ret = createFunsCalledTree(vFunctions, queryFuncIndex, arry, taotalFuncs);
+		}
+	}
+
+	//--------------------------
+	for (int i = 0; i < taotalFuncs; ++i)
+	{
+		if(arry[i] != NULL && arry[i]->refCount == 0)
+		{
+			trees.funcsIndexs.push_back(arry[i]); //多叉树的根节点
+		}
+	}
+	
+	//--------------------------
+	int len4 = trees.funcsIndexs.size();
+	for (int i = 0; i < len4; ++i)
+	{
+		trees.funcsIndexs[i]->printInfo();
+	}
+
+	for (int i = 0; i < len4; ++i)
+	{
+		std::vector<_FUNC_INDEX_ *> funcs;
+		funcs.push_back(trees.funcsIndexs[i]);
+		trees.funcsIndexs[i]->printInfoFuncRoute(funcs);
+	}
+
+	return ret;
+}
+
+
+int CFuncRoute::createFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, int queryFuncIndex, FUNC_INDEX **&arry, int arryLen)
+{
+	int ret = 0;
+
+	int index1 = 0;
+	int index2 = 0;
+	int flag = 0;
+
+	ret = getFuncsPos(vFunctions, queryFuncIndex, index1, index2);
+	if(ret != 0)
+	{
+		return 0;
+	}
+	
+	if(arry[queryFuncIndex] == NULL)
+	{
+		_FUNC_INDEX_ * fi = (_FUNC_INDEX_ *)malloc(sizeof(_FUNC_INDEX_));
+		memset(fi, 0, sizeof(_FUNC_INDEX_));
+
+		fi->index1 = index1;
+		fi->index2 = index2;
+		fi->funcIndex = queryFuncIndex;
+
+		arry[queryFuncIndex] = fi;
+		flag = 1;
+	}else
+	{
+		return 0;
+	}
+	
+	//---------------------------------
+	int len = vFunctions[index1].funcs[index2].funcsWhichInFunctionBody.size();
+	for (int i = 0; i < len; ++i)
+	{
+		int qIndex = vFunctions[index1].funcs[index2].funcsWhichInFunctionBody[i].functionIndex;
+		int index11 = 0;
+		int index22 = 0;
+
+		ret = getFuncsPos(vFunctions, qIndex, index11, index22);
+		if(ret != 0)
+		{
+			continue;
+		}
+
+		ret = createFunsCalledTree(vFunctions, qIndex, arry, arryLen); //递归调用
+		if(ret != 0)
+		{
+			continue;
+		}
+
+		if(flag == 1)
+		{
+			arry[qIndex]->parentIndexs.push_back(arry[queryFuncIndex]);
+			arry[queryFuncIndex]->childrenIndexs.push_back(arry[qIndex]);
+			arry[qIndex]->refCount++;
+		}
+	}
+
+	return 0;
+}
+
+
+int CFuncRoute::getFuncsPos(std::vector<FUNCTIONS> &vFunctions, int queryFuncIndex, int &index1, int &index2)
+{
+	int ret = 0;
+	int len1 = vFunctions.size();
+	for (int i = 0; i < len1; ++i)
+	{
+		int len2 = vFunctions[i].funcs.size();
+		for (int j = 0; j < len2; ++j)
+		{
+			if(vFunctions[i].funcs[j].functionIndex == queryFuncIndex)
+			{
+				index1 = i;
+				index2 = j;
+				return 0;
+			}
+		}
+	}
+
+	return -1;
 }
 
 
