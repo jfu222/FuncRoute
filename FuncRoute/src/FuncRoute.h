@@ -262,33 +262,89 @@ typedef struct _FUNC_INDEX_
 	std::vector<_FUNC_INDEX_ *> childrenIndexs; //该函数调用了哪些其他函数（可以自己调用自己）
 
 public:
-	bool isRecursiveFunction(int funcIndex) //是否是递归函数
+/*	bool isRecursiveFunction1(int funcIndex) //是否是递归函数
 	{
 		int len = parentIndexs.size();
-		if(len == 0)
+		if (len == 0)
 		{
 			return false;
-		}else
+		}
+		else
 		{
-			for(int i = 0; i < len; ++i)
+			for (int i = 0; i < len; ++i)
 			{
-				if(parentIndexs[i]->funcIndex == funcIndex)
+				if (parentIndexs[i]->funcIndex == funcIndex)
 				{
 					return true;
-				}else
+				}
+				else
 				{
+					bool bRet = parentIndexs[i]->isRecursiveFunction(parentIndexs[i]->funcIndex);
+					if (bRet == true)
+					{
+						continue;
+					}
+
 					bool ret = parentIndexs[i]->isRecursiveFunction(funcIndex);
-					if(ret == true)
+					if (ret == true)
 					{
 						return true;
 					}
 				}
 			}
 		}
-		
+
 		return false;
 	}
-	
+*/
+	bool isRecursiveFunction(int funcIndex) //是否是递归函数
+	{
+		std::vector<_FUNC_INDEX_ *> stack;
+		std::vector<int> stackIndexes;
+		stack.push_back(this);
+
+		while (stack.empty() == false)
+		{
+			_FUNC_INDEX_ *node = stack.front();
+			
+			stack.erase(stack.begin());
+
+			int len1 = node->parentIndexs.size();
+			
+			if (len1 == 0)
+			{
+				return false;
+			}
+
+			for (int i = 0; i < len1; ++i)
+			{
+				if ((node != this && node->funcIndex == funcIndex) || node->parentIndexs[i]->funcIndex == funcIndex)
+				{
+					return true;
+				}
+
+				int len2 = stackIndexes.size();
+				int flag = 0;
+				for (int j = 0; j < len2; ++j)
+				{
+					if (stackIndexes[j] == node->parentIndexs[i]->funcIndex)
+					{
+						flag = 1;
+						break;
+					}
+				}
+
+				if (flag == 0)
+				{
+					stackIndexes.push_back(node->parentIndexs[i]->funcIndex);
+					stack.push_back(node->parentIndexs[i]);
+				}
+			}
+		}
+
+		return false;
+	}
+
 	int freeMem()
 	{
 		int len1 = childrenIndexs.size();
@@ -311,12 +367,20 @@ public:
 		std::vector<_FUNC_INDEX_ *> stack;
 		std::vector<int> stackParent;
 		std::vector<int> stackDepth;
+		std::vector<std::vector<int>> stackUncles;
+		std::vector<std::vector<int>> stackUnclesLast;
+		std::vector<int> stackTemp;
+		int parentCnt = 1;
 
 		//---------------------------------
 		printf("==========\n");
 		stack.push_back(this);
-		stackParent.push_back(this->funcIndex);
+		stackParent.push_back(parentCnt++);
 		stackDepth.push_back(1);
+
+		int lastI = 0;
+		int lastJ = 0;
+		int flag = 0;
 		
 		while (stack.empty() == false)
 		{
@@ -328,23 +392,65 @@ public:
 			stackParent.erase(stackParent.begin());
 			stackDepth.erase(stackDepth.begin());
 
+			flag = 0;
+			for (int i = lastI; i < stackUnclesLast.size(); ++i)
+			{
+				for (int j = lastJ; j < stackUnclesLast[i].size(); ++j)
+				{
+					if (stackUnclesLast[i][j] == parentIndex)
+					{
+						lastI = i;
+						lastJ = j;
+						flag = 1;
+						break;
+					}
+				}
+
+				if (flag == 1)
+				{
+					break;
+				}
+				lastJ = 0;
+			}
+
 			if(stack.empty() == true)
 			{
-				printf("%d\n", node->funcIndex); //换行
+				printf("%d(%d;%d/%d)\n", node->funcIndex, parentIndex, lastI + 1, lastJ + 1); //换行
+
+				lastI = 0;
+				lastJ = 0;
+				stackTemp.push_back(node->funcIndex);
+				stackUncles.push_back(stackTemp);
+				stackTemp.clear();
+				stackUnclesLast = stackUncles;
+				stackUncles.clear();
 			}else
 			{
 				//---------------------
 				if (parentIndex == stackParent[0]) //共同的父节点
 				{
 					printf("%d-", node->funcIndex);
+					stackTemp.push_back(node->funcIndex);
 				} else //非共同的父节点
 				{
 					if (depth == stackDepth[0]) //深度相等
 					{
-						printf("%d ", node->funcIndex);
+						printf("%d(%d;%d/%d) ", node->funcIndex, parentIndex, lastI + 1, lastJ + 1);
+
+						stackTemp.push_back(node->funcIndex);
+						stackUncles.push_back(stackTemp);
+						stackTemp.clear();
 					} else
 					{
-						printf("%d\n", node->funcIndex);
+						printf("%d(%d;%d/%d)\n", node->funcIndex, parentIndex, lastI + 1, lastJ + 1); //换行
+
+						lastI = 0;
+						lastJ = 0;
+						stackTemp.push_back(node->funcIndex);
+						stackUncles.push_back(stackTemp);
+						stackTemp.clear();
+						stackUnclesLast = stackUncles;
+						stackUncles.clear();
 					}
 				}
 			}
@@ -371,6 +477,7 @@ public:
 		
 		int len1 = this->childrenIndexs.size();
 		int len2 = funcs.size();
+
 		bool bRet = this->isRecursiveFunction(this->funcIndex);
 
 		if(len1 == 0 || bRet == true)

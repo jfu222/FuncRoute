@@ -3897,10 +3897,6 @@ int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNC
 		int len2 = vFunctions[i].funcs.size();
 		for (int j = 0; j < len2; ++j)
 		{
-		if(j == 9)
-		{
-			int a = 0;
-		}
 			int queryFuncIndex = vFunctions[i].funcs[j].functionIndex;
 			ret = createFunsCalledTree(vFunctions, queryFuncIndex, arry, taotalFuncs);
 		}
@@ -3927,6 +3923,13 @@ int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNC
 		std::vector<_FUNC_INDEX_ *> funcs;
 		funcs.push_back(trees.funcsIndexs[i]);
 		trees.funcsIndexs[i]->printInfoFuncRoute(funcs);
+	}
+
+	//--------------------------
+	if (arry)
+	{
+		delete [] arry;
+		arry = NULL;
 	}
 
 	return ret;
