@@ -221,7 +221,7 @@ public:
 
 typedef struct _FUNCTIONS_
 {
-	unsigned char fllename[600]; //所在文件名
+	char fllename[600]; //所在文件名
 	std::vector<FUNCTION_STRUCTURE> funcs;
 	std::vector<CLASS_STRUCT> classes; //存储本文件中声明了哪些C++类/结构体
 

@@ -777,6 +777,34 @@ retry3:
 			}
 		}
 
+		//------从结构体名中，提取函数类名-----------
+		if(strlen(funcStruct.className) > 0 && strlen(funcStruct.classNameAlias) <= 0 && strlen(funcStruct.structName) <= 0)
+		{
+			int len1 = strlen(funcStruct.className);
+			
+			std::string str = funcStruct.functionName.str;
+
+			for (int i = 0; i < functions.classes.size(); ++i)
+			{
+				if (functions.classes[i].isStruct) //说明是结构体的成员函数
+				{
+					int len2 = strlen(functions.classes[i].className.str);
+					int len3 = strlen(functions.classes[i].classNameAlias.str);
+
+					if((len1 == len2 && memcmp(functions.classes[i].className.str, funcStruct.className, len1) == 0)
+						|| (len1 == len3 && memcmp(functions.classes[i].classNameAlias.str, funcStruct.className, len1) == 0)
+						)
+					{
+						memcpy(funcStruct.structName, functions.classes[i].className.str, len2);
+						funcStruct.structName[len2] = '\0';
+
+						memcpy(funcStruct.classNameAlias, functions.classes[i].classNameAlias.str, len3);
+						funcStruct.structName[len3] = '\0';
+					}
+				}
+			}
+		}
+
 		//------将结果保存起来----------
 		functions.funcs.push_back(funcStruct);
 
@@ -3658,6 +3686,46 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			vFunctions[i].funcs[j].functionIndex = funcCnt++;
 		}
 	}
+	
+	for (int i = 0; i < len1; ++i)
+	{
+		int len2 = vFunctions[i].funcs.size();
+		for (int j = 0; j < len2; ++j)
+		{
+			FUNCTION_STRUCTURE funcStruct = vFunctions[i].funcs[j];
+
+			//------从结构体名中，提取函数类名-----------
+			if(strlen(vFunctions[i].funcs[j].className) > 0 && strlen(vFunctions[i].funcs[j].classNameAlias) <= 0 && strlen(vFunctions[i].funcs[j].structName) <= 0)
+			{
+				int lenClassName = strlen(vFunctions[i].funcs[j].className);
+			
+				std::string str = vFunctions[i].funcs[j].functionName.str;
+
+				for (int i2 = 0; i2 < len1; ++i2)
+				{
+					for (int j2 = 0; j2 < vFunctions[i2].classes.size(); ++j2)
+					{
+						if (vFunctions[i2].classes[j2].isStruct) //说明是结构体的成员函数
+						{
+							int len22 = strlen(vFunctions[i2].classes[j2].className.str);
+							int len33 = strlen(vFunctions[i2].classes[j2].classNameAlias.str);
+
+							if((lenClassName == len22 && memcmp(vFunctions[i2].classes[j2].className.str, vFunctions[i].funcs[j].className, lenClassName) == 0)
+								|| (lenClassName == len33 && memcmp(vFunctions[i2].classes[j2].classNameAlias.str, vFunctions[i].funcs[j].className, lenClassName) == 0)
+								)
+							{
+								memcpy(vFunctions[i].funcs[j].structName, vFunctions[i2].classes[j2].className.str, len22);
+								vFunctions[i].funcs[j].structName[len22] = '\0';
+
+								memcpy(vFunctions[i].funcs[j].classNameAlias, vFunctions[i2].classes[j2].classNameAlias.str, len33);
+								vFunctions[i].funcs[j].structName[len33] = '\0';
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
 	//-------更新父类的父类------------
 	ret = updateParentClass(vFunctions);
@@ -3913,16 +3981,41 @@ int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNC
 	}
 	
 	//---------生成tex文件-----------------
-	int len4 = trees.funcsIndexs.size();
-	for (int i = 0; i < len4; ++i)
+	if(m_filePathForPdfTex != "")
 	{
-		trees.funcsIndexs[i]->printInfo();
-//		if (i == len4 - 1)
-		if (trees.funcsIndexs[i]->funcIndex == 4)
+		printf("m_filePathForPdfTex: %s;\n", m_filePathForPdfTex.c_str());
+
+		FILE * fp = fopen(m_filePathForPdfTex.c_str(), "w");
+		RETURN_IF_FAILED(fp == NULL, -1);
+
+		std::string strTex = "";
+
+		ret = createPdfTexHeader(strTex);
+		RETURN_IF_FAILED(ret, -1);
+		
+		fwrite(strTex.c_str(), 1, strTex.length(), fp);
+
+		int len4 = trees.funcsIndexs.size();
+		for (int i = 0; i < len4; ++i)
 		{
-//			ret = createPdfTex(vFunctions, vIndexs);
-			ret = createPdfTex2(vFunctions, trees.funcsIndexs[i]);
+//			if(trees.funcsIndexs[i]->funcIndex != 83){ continue; }
+
+			trees.funcsIndexs[i]->printInfo();
+			
+			strTex = "";
+			ret = createPdfTexBody(vFunctions, trees.funcsIndexs[i], strTex);
+			RETURN_IF_FAILED(ret, -1);
+
+			fwrite(strTex.c_str(), 1, strTex.length(), fp);
 		}
+		
+		strTex = "";
+		ret = createPdfTexTailer(strTex);
+		RETURN_IF_FAILED(ret, -1);
+		
+		fwrite(strTex.c_str(), 1, strTex.length(), fp);
+
+		fclose(fp);
 	}
 
 //	for (int i = 0; i < len4; ++i)
@@ -4069,30 +4162,26 @@ int CFuncRoute::printInfo(std::vector<FUNCTIONS> &vFunctions)
 }
 
 
-int CFuncRoute::createPdfTex2(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode)
+int CFuncRoute::createPdfTexHeader(std::string &strTexHeader)
 {
 	int ret = 0;
-
-	int funcIndexRoot = rootNode->funcIndex; //多叉树的根节点
-
-	char file[600] = "";
-	sprintf(file, "./out.FuncRoute.pdf.%d.tex", funcIndexRoot);
-
-	printf("file: %s;\n", file);
-
-	FILE * fp = fopen(file, "w");
-	RETURN_IF_FAILED(fp == NULL, -1);
-
+	
 	//-----------生成tex文件头部----------------------
-	char strHeader[] = "\\documentclass[UTF8]{standalone}\n"
-		"\\usepackage{tikz}\n"
+	char strHeader[] = "\\documentclass[tikz]{standalone}\n"
 		"\\usetikzlibrary{trees}\n"
 		"\\begin{document}\n"
-		"\\tikzstyle{every node}=[shape=rectangle,rounded corners,draw=black,thick,top color=white,bottom color=blue!20,anchor=west]\n"
-		"\\begin{tikzpicture}[grow via three points={one child at (0.5,-0.7) and two children at (0.5,-0.7) and (0.5,-1.4)}, edge from parent path={(\\tikzparentnode.south) |- (\\tikzchildnode.west)}]\n";
+		"\\tikzstyle{every node}=[shape=rectangle,rounded corners,draw=black,thick,top color=white,bottom color=blue!20,anchor=west]\n";
 
-	fwrite(strHeader, 1, strlen(strHeader), fp);
+	strTexHeader = strHeader;
 
+	return ret;
+}
+
+
+int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody)
+{
+	int ret = 0;
+	
 	//-----------生成tex文件身体----------------------
 	//采用多叉树的前序遍历，即先遍历父节点，再遍历所有子节点
 	std::string texStr = "";
@@ -4155,16 +4244,73 @@ int CFuncRoute::createPdfTex2(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ *
 			}
 		}
 
+		//-------加上文件名--------------
+		std::string filename = vFunctions[node->index1].fllename;
+		pos = filename.rfind("/");
+
+		if (pos == std::string::npos)
+		{
+			pos = filename.rfind("\\");
+		}
+
+		if (pos != std::string::npos)
+		{
+			std::string dir = filename.substr(0, pos);
+			
+			pos = dir.rfind("/");
+			if (pos == std::string::npos)
+			{
+				pos = dir.rfind("\\");
+			}
+
+			if (pos != std::string::npos)
+			{
+				filename = filename.substr(pos + 1);
+			}
+		}
+
+		functionName += "(" + filename + ":" + std::to_string(vFunctions[node->index1].funcs[node->index2].functionName.lineNumberOfStart) + ")";
+
 		//--------------将functionName中的"_"替换为"\\_"，原因是pdflatex会将"_"识别为数学标识符-----------------------
+		//latex的保留字符：'#','$','%','^','&','_','{','}','~','\'
+
 		int strLen = functionName.length();
 		char * strTmp = (char *)malloc(strLen * 2 + 1);
 		char * p = strTmp;
 		for (int i = 0; i < strLen; ++i)
 		{
-			if (functionName[i] == '_')
+			if (functionName[i] == '#' || functionName[i] == '$' 
+				|| functionName[i] == '%' //|| functionName[i] == '~' 
+				|| functionName[i] == '&' || functionName[i] == '_' 
+				|| functionName[i] == '{' || functionName[i] == '}' 
+				)
 			{
 				*p = '\\';
 				p++;
+			}else if(functionName[i] == '\\')
+			{
+				*p = '/';
+				p++;
+				continue;
+			}else if(functionName[i] == '^' || functionName[i] == '~')
+			{
+				*p = '\\'; p++;
+				*p = functionName[i]; p++;
+				*p = '{'; p++;
+				*p = '}'; p++;
+				continue;
+			}else if(functionName[i] == '>')
+			{
+				char str[] = "\\textgreater";
+				memcpy(p, str, strlen(str));
+				p += strlen(str);
+				continue;
+			}else if(functionName[i] == '<')
+			{
+				char str[] = "\\textless";
+				memcpy(p, str, strlen(str));
+				p += strlen(str);
+				continue;
 			}
 			*p = functionName[i];
 			p++;
@@ -4183,7 +4329,7 @@ int CFuncRoute::createPdfTex2(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ *
 		if (flag == 0)
 		{
 			sprintf(strBody, "\\node {[%d] %s}\n", node->funcIndex, functionName.c_str()); //_snprintf_s()
-			fwrite(strBody, 1, strlen(strBody), fp);
+			texStr = strBody;
 
 			flag = 1;
 		}
@@ -4284,15 +4430,30 @@ int CFuncRoute::createPdfTex2(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ *
 		}
 	}
 
-	texStr += ";";
-	fwrite(texStr.c_str(), 1, texStr.length(), fp);
+	texStr += ";\n";
+	
+	//----------------------------------------
+	char strBegin[] = "\\begin{tikzpicture}["
+		"grow via three points={one child at (0.5,-0.7) and two children at (0.5,-0.7) and (0.5,-1.4)}, "
+		"edge from parent path={(\\tikzparentnode.south) |- (\\tikzchildnode.west)}"
+		"]\n";
+		
+	char strEnd[] = "\\end{tikzpicture}\n\n";
 
+	strTexBody = strBegin + texStr + strEnd;
+
+	return ret;
+}
+
+
+int CFuncRoute::createPdfTexTailer(std::string &strTexTailer)
+{
+	int ret = 0;
+	
 	//-----------生成tex文件尾部----------------------
-	char strTailer[] = "\\end{tikzpicture}\n"
-		"\\end{document}\n";
-	fwrite(strTailer, 1, strlen(strTailer), fp);
+	char strTailer[] = "\\end{document}\n";
 
-	fclose(fp);
+	strTexTailer = strTailer;
 
 	return ret;
 }

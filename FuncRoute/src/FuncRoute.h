@@ -78,11 +78,11 @@ public:
 	int dumpBufferToFile(unsigned char *buffer, int bufferSize, char *filename); //将内存数据写到磁盘文件
 	int printInfo(std::vector<FUNCTIONS> &vFunctions);
 
-	int createPdfTex2(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode); //生成 test.tex，可转换成 test.pdf
+//	int createPdfTex2(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode); //生成 test.tex，可转换成 test.pdf
 
-//	int createPdfTexHeader(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode); //生成 test.tex头部 ，可转换成 test.pdf
-//	int createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode); //生成 test.tex1转换成 test.pdf
-//	int createPdfTexTailer(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode); //生成 test.tex，可转换成 test.pdf
+	int createPdfTexHeader(std::string &strTexHeader); //生成 test.tex头部 ，可转换成 test.pdf
+	int createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody); //生成 test.tex身体，转换成 test.pdf
+	int createPdfTexTailer(std::string &strTexTailer); //生成 test.tex尾部，可转换成 test.pdf
 };
 
 #endif //__FUNC_ROUTE_H__
