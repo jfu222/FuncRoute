@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\CommonData.cpp" />
     <ClCompile Include="src\FuncRoute.cpp" />
     <ClCompile Include="src\FuncRoute2.cpp" />
     <ClCompile Include="src\Help.cpp" />
@@ -34,6 +35,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\CKeyword.h" />
+    <ClInclude Include="src\CommonData.h" />
     <ClInclude Include="src\CPPKeyword.h" />
     <ClInclude Include="src\FuncRoute.h" />
     <ClInclude Include="src\FuncRoute2.h" />

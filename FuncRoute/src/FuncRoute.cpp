@@ -31,7 +31,8 @@
 //-----------------------------
 CFuncRoute::CFuncRoute()
 {
-
+	m_srcCodesFilePath = "";
+	m_filePathForPdfTex = "";
 }
 
 
@@ -3911,19 +3912,25 @@ int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNC
 		}
 	}
 	
-	//--------------------------
+	//---------生成tex文件-----------------
 	int len4 = trees.funcsIndexs.size();
 	for (int i = 0; i < len4; ++i)
 	{
 		trees.funcsIndexs[i]->printInfo();
+//		if (i == len4 - 1)
+		if (trees.funcsIndexs[i]->funcIndex == 4)
+		{
+//			ret = createPdfTex(vFunctions, vIndexs);
+			ret = createPdfTex2(vFunctions, trees.funcsIndexs[i]);
+		}
 	}
 
-	for (int i = 0; i < len4; ++i)
-	{
-		std::vector<_FUNC_INDEX_ *> funcs;
-		funcs.push_back(trees.funcsIndexs[i]);
-		trees.funcsIndexs[i]->printInfoFuncRoute(funcs);
-	}
+//	for (int i = 0; i < len4; ++i)
+//	{
+//		std::vector<_FUNC_INDEX_ *> funcs;
+//		funcs.push_back(trees.funcsIndexs[i]);
+//		trees.funcsIndexs[i]->printInfoFuncRoute(funcs);
+//	}
 
 	//--------------------------
 	if (arry)
@@ -4057,6 +4064,235 @@ int CFuncRoute::printInfo(std::vector<FUNCTIONS> &vFunctions)
 
 		ret = vFunctions[i].printfInfo();
 	}
+
+	return ret;
+}
+
+
+int CFuncRoute::createPdfTex2(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode)
+{
+	int ret = 0;
+
+	int funcIndexRoot = rootNode->funcIndex; //多叉树的根节点
+
+	char file[600] = "";
+	sprintf(file, "./out.FuncRoute.pdf.%d.tex", funcIndexRoot);
+
+	printf("file: %s;\n", file);
+
+	FILE * fp = fopen(file, "w");
+	RETURN_IF_FAILED(fp == NULL, -1);
+
+	//-----------生成tex文件头部----------------------
+	char strHeader[] = "\\documentclass[UTF8]{standalone}\n"
+		"\\usepackage{tikz}\n"
+		"\\usetikzlibrary{trees}\n"
+		"\\begin{document}\n"
+		"\\tikzstyle{every node}=[shape=rectangle,rounded corners,draw=black,thick,top color=white,bottom color=blue!20,anchor=west]\n"
+		"\\begin{tikzpicture}[grow via three points={one child at (0.5,-0.7) and two children at (0.5,-0.7) and (0.5,-1.4)}, edge from parent path={(\\tikzparentnode.south) |- (\\tikzchildnode.west)}]\n";
+
+	fwrite(strHeader, 1, strlen(strHeader), fp);
+
+	//-----------生成tex文件身体----------------------
+	//采用多叉树的前序遍历，即先遍历父节点，再遍历所有子节点
+	std::string texStr = "";
+	std::string spaceStr = "";
+	char strBody[1024] = { 0 };
+	int flag = 0;
+	int itemCnt = 0;
+
+	struct TEMP_NODE
+	{
+		_FUNC_INDEX_ * node;
+		int siblingsCnt;
+		int siblingsIndex;
+		int descendantsCnt; //子孙后代的数目
+		int depth;
+	};
+
+	std::stack<TEMP_NODE> stack;
+	std::stack<TEMP_NODE> stackTempNode;
+	std::map<int, int> hashRecursiveCnt;
+
+	TEMP_NODE tempNode;
+	memset(&tempNode, 0, sizeof(TEMP_NODE));
+
+	tempNode.node = rootNode;
+	tempNode.siblingsCnt = 1;
+	tempNode.siblingsIndex = 0;
+	tempNode.descendantsCnt = 0;
+	tempNode.depth = 0;
+
+	stack.push(tempNode);
+
+	while (stack.empty() == false)
+	{
+		TEMP_NODE tempNode1 = stack.top();
+		_FUNC_INDEX_ *node = tempNode1.node;
+
+		stack.pop();
+
+		//----------------------------
+		std::string functionName = vFunctions[node->index1].funcs[node->index2].functionName.str;
+
+		size_t pos = functionName.rfind("::");
+		if (pos == std::string::npos)
+		{
+			std::string className = vFunctions[node->index1].funcs[node->index2].className;
+			std::string classNameAlias = vFunctions[node->index1].funcs[node->index2].classNameAlias;
+			std::string structName = vFunctions[node->index1].funcs[node->index2].structName;
+			if (className != "")
+			{
+				functionName = className + "::" + functionName;
+			}
+			else if (classNameAlias != "")
+			{
+				functionName = classNameAlias + "::" + functionName;
+			}
+			else if (structName != "")
+			{
+				functionName = structName + "::" + functionName;
+			}
+		}
+
+		//--------------将functionName中的"_"替换为"\\_"，原因是pdflatex会将"_"识别为数学标识符-----------------------
+		int strLen = functionName.length();
+		char * strTmp = (char *)malloc(strLen * 2 + 1);
+		char * p = strTmp;
+		for (int i = 0; i < strLen; ++i)
+		{
+			if (functionName[i] == '_')
+			{
+				*p = '\\';
+				p++;
+			}
+			*p = functionName[i];
+			p++;
+		}
+		*p = '\0';
+		functionName = strTmp;
+		if (strTmp){ free(strTmp); strTmp = NULL; }
+
+		//---------------------
+		spaceStr = "";
+		for (int i = 0; i < tempNode1.depth; ++i)
+		{
+			spaceStr += "    ";
+		}
+
+		if (flag == 0)
+		{
+			sprintf(strBody, "\\node {[%d] %s}\n", node->funcIndex, functionName.c_str()); //_snprintf_s()
+			fwrite(strBody, 1, strlen(strBody), fp);
+
+			flag = 1;
+		}
+		else
+		{
+			sprintf(strBody, "child { node {[%d] %s} \n", node->funcIndex, functionName.c_str());
+			texStr += spaceStr + strBody;
+			itemCnt++;
+		}
+
+		bool bRet = node->isRecursiveFunction(node->funcIndex);
+		if (bRet == true)
+		{
+			hashRecursiveCnt[node->funcIndex]++;
+		}
+
+		//---------------------
+		int len1 = node->childrenIndexs.size();
+
+		if (len1 == 0 || (bRet == true && hashRecursiveCnt[node->funcIndex] >= 2)) //处理右大括号
+		{
+			if (tempNode1.depth == 0) //说明整棵树只有一个root节点
+			{
+				break;
+			}
+
+			texStr += spaceStr + "    }\n";
+
+			if (tempNode1.siblingsIndex == tempNode1.siblingsCnt - 1) //说明是兄弟姐妹节点的最后一个节点
+			{
+				TEMP_NODE temp22 = tempNode1;
+
+				while (!stackTempNode.empty())
+				{
+					TEMP_NODE temp11 = stackTempNode.top(); //len1==0说明tempNode1.node是叶子节点，stackTempNode.top()是其父节点
+					stackTempNode.pop();
+
+					if (temp11.depth == 0) //说明整棵树只有一个root节点
+					{
+						break;
+					}
+
+					temp11.descendantsCnt += temp22.descendantsCnt + 1; //更新子孙后代节点数目
+
+					if (temp22.siblingsIndex == temp22.siblingsCnt - 1) //说明是兄弟姐妹节点的最后一个节点
+					{
+						texStr += spaceStr + "}\n";
+
+						for (int i = 0; i < temp11.descendantsCnt; ++i)
+						{
+							texStr += spaceStr + "child [missing] {}\n";
+						}
+						temp22 = temp11;
+					}
+					else //说明该节点后面还有其他兄弟姐妹节点
+					{
+						stackTempNode.push(temp11); //再入栈
+						break;
+					}
+				}
+			}
+			else
+			{
+				if (!stackTempNode.empty())
+				{
+					TEMP_NODE temp11 = stackTempNode.top(); //temp11是tempNode1的父节点，先出栈
+					stackTempNode.pop();
+
+					temp11.descendantsCnt += tempNode1.descendantsCnt + 1; //更新子孙后代节点数目
+
+					stackTempNode.push(temp11); //再入栈
+				}
+			}
+		}
+		else
+		{
+			if (bRet == true && hashRecursiveCnt[node->funcIndex] >= 2)
+			{
+				continue;
+			}
+
+			//-------------------------
+			stackTempNode.push(tempNode1);
+
+			//-------------------------
+			for (int i = len1 - 1; i >= 0; --i)
+			{
+				memset(&tempNode, 0, sizeof(TEMP_NODE));
+
+				tempNode.node = node->childrenIndexs[i];
+				tempNode.siblingsCnt = len1;
+				tempNode.siblingsIndex = i;
+				tempNode.descendantsCnt = 0;
+				tempNode.depth = tempNode1.depth + 1;
+
+				stack.push(tempNode);
+			}
+		}
+	}
+
+	texStr += ";";
+	fwrite(texStr.c_str(), 1, texStr.length(), fp);
+
+	//-----------生成tex文件尾部----------------------
+	char strTailer[] = "\\end{tikzpicture}\n"
+		"\\end{document}\n";
+	fwrite(strTailer, 1, strlen(strTailer), fp);
+
+	fclose(fp);
 
 	return ret;
 }
