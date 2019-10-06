@@ -5,6 +5,7 @@
 #include "./os/share_library.h"
 #include "CPPKeyword.h"
 #include "CKeyword.h"
+#include "version.h"
 
 
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
@@ -31,7 +32,8 @@
 //-----------------------------
 CFuncRoute::CFuncRoute()
 {
-
+	m_srcCodesFilePath = "";
+	m_filePathForPdfTex = "";
 }
 
 
@@ -719,7 +721,7 @@ retry3:
 		}
 		
 		//--------查找函数体内部调用了哪些其他函数---------------
-		ret = findAllFuncsInFunctionBody(funcStruct.functionBody.start, funcStruct.functionBody.length, funcStruct.funcsWhichInFunctionBody, p1, funcStruct.functionBody.lineNumberOfStart);
+		ret = findAllFuncsInFunctionBody(funcStruct.functionBody.start, funcStruct.functionBody.length, funcStruct.functionParameter.str, funcStruct.funcsWhichInFunctionBody, p1, funcStruct.functionBody.lineNumberOfStart);
 		if (ret != 0)
 		{
 			ret = -8;
@@ -771,6 +773,34 @@ retry3:
 					{
 						memcpy(funcStruct.className, funcStruct.functionName.str, len);
 						funcStruct.className[len] = '\0';
+					}
+				}
+			}
+		}
+
+		//------从结构体名中，提取函数类名-----------
+		if(strlen(funcStruct.className) > 0 && strlen(funcStruct.classNameAlias) <= 0 && strlen(funcStruct.structName) <= 0)
+		{
+			int len1 = strlen(funcStruct.className);
+			
+			std::string str = funcStruct.functionName.str;
+
+			for (int i = 0; i < functions.classes.size(); ++i)
+			{
+				if (functions.classes[i].isStruct) //说明是结构体的成员函数
+				{
+					int len2 = strlen(functions.classes[i].className.str);
+					int len3 = strlen(functions.classes[i].classNameAlias.str);
+
+					if((len1 == len2 && memcmp(functions.classes[i].className.str, funcStruct.className, len1) == 0)
+						|| (len1 == len3 && memcmp(functions.classes[i].classNameAlias.str, funcStruct.className, len1) == 0)
+						)
+					{
+						memcpy(funcStruct.structName, functions.classes[i].className.str, len2);
+						funcStruct.structName[len2] = '\0';
+
+						memcpy(funcStruct.classNameAlias, functions.classes[i].classNameAlias.str, len3);
+						funcStruct.structName[len3] = '\0';
 					}
 				}
 			}
@@ -1021,52 +1051,37 @@ int CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferS
 	unsigned char *p21 = NULL;
 	unsigned char *p22 = NULL;
 	int doubleQuotationMarksFlag = 0; //双引号
+	unsigned char *startPos = NULL;
+	unsigned char *endPos = NULL;
 	int flag = 0;
+	
+	unsigned char *pNewline = p1;
 
 	//------先将被注释掉的代码用空格' '代替（换行号符'\n'保留）--------
 	while (p2 <= p3)
 	{
-/*		//双引号内部的双斜杠不代表注释的意思，需要跳过
-		if (*p2 == '"')
-		{
-			p21 = p2 + 1;
-			while (p21 <= p3)
-			{
-				if (*p21 == '"') //尝试查找配对的右边的双引号
-				{
-					flag = 0;
-					p22 = p21 - 1;
-					while (p22 >= p1)
-					{
-						if (*p22 == '\\') //判断是否是用反斜杠转义的双引号，如果是，则需要跳过
-						{
-							flag++;
-						}
-						else
-						{
-							break;
-						}
-						p22--;
-					}
-
-					if (flag % 2 == 0) //偶数倍，表示是配对的双引号，则结束查找
-					{
-						p2 = p21 + 1;
-						break;
-					}
-				}
-				p21++;
-			}
-		}
-*/
 		if (*p2 == '/') //被斜线(oblique line)"/"注释掉的字符串
 		{
-			p21 = p2;
-
 			if (p2 + 1 <= p3 && *(p2 + 1) == '*') //说明是用 "/*...*/" 进行的多行代码注释
 			{
+				//---------判断是否处于一对双引号内部---------
+				startPos = NULL;
+				endPos = NULL;
+				ret = findCurLineStartAndEndPos(p1, bufferSize, p2, startPos, endPos);
+				if(ret == 0)
+				{
+					ret = isBetweenInDoubleQuotes(startPos, endPos - startPos + 1, p2, startPos, endPos);
+					if(ret == 0)
+					{
+						p2 = endPos; //双引号内部的双斜杠不代表注释的意思，需要跳过
+						continue;
+					}
+				}
+				
+				//---------------
+				p21 = p2;
 				p2 += 2;
-
+				
 				while (p2 <= p3)
 				{
 					if (*p2 == '*' && p2 + 1 <= p3 && *(p2 + 1) == '/') //说明找到了"*/"
@@ -1090,6 +1105,21 @@ int CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferS
 			}
 			else if (p2 + 1 <= p3 && *(p2 + 1) == '/') //说明是用 "//..." 进行的单行代码注释
 			{
+				//---------判断是否处于一对双引号内部---------
+				startPos = NULL;
+				endPos = NULL;
+				ret = findCurLineStartAndEndPos(p1, bufferSize, p2, startPos, endPos);
+				if(ret == 0)
+				{
+					ret = isBetweenInDoubleQuotes(startPos, endPos - startPos + 1, p2, startPos, endPos);
+					if(ret == 0)
+					{
+						p2 = endPos; //双引号内部的双斜杠不代表注释的意思，需要跳过
+						continue;
+					}
+				}
+				
+				//---------------
 				while (p2 <= p3)
 				{
 					if (*p2 != '\n') //换行符不覆盖
@@ -1113,6 +1143,126 @@ int CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferS
 	}
 
 	return 0;
+}
+
+
+int CFuncRoute::findCurLineStartAndEndPos(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos)
+{
+	int ret = 0;
+	
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = curPos;
+	
+	startPos = NULL;
+	endPos = NULL;
+
+	while (p21 >= p1)
+	{
+		if(*p21 == '\n')
+		{
+			startPos = p21;
+			break;
+		}
+		p21--;
+	}
+	
+	p21 = curPos;
+	while (p21 <= p3)
+	{
+		if(*p21 == '\n')
+		{
+			endPos = p21;
+			break;
+		}
+		p21++;
+	}
+
+	if(startPos != NULL && endPos != NULL)
+	{
+		return 0;
+	}
+
+	return -1;
+}
+
+
+int CFuncRoute::isBetweenInDoubleQuotes(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos)
+{
+	int ret = 0;
+	
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = p1;
+	unsigned char *p22 = p1;
+	
+	startPos = NULL;
+	endPos = NULL;
+
+retry1:
+	ret = findCharForward(p21, p3 - p21 + 1, '"', p21);
+	if(ret != 0) //说明没找着左边的双引号
+	{
+		return -1;
+	}
+	
+	if(p21 - 1 >= p1 && *(p21 - 1) == '\\')
+	{
+		p21 += 1;
+		goto retry1; //跳过 类似 /*\"*/
+	}
+
+	if((p21 - 1 >= p1 && *(p21 - 1) == '\'')
+		&& (p21 + 1 <= p3 && *(p21 + 1) == '\'')
+		)
+	{
+		p21 += 2;
+		goto retry1; //跳过 类似 char a = '"';
+	}
+
+	//--------------------
+	startPos = p21; //找着了左边的双引号
+	p21++;
+
+retry2:
+	ret = findCharForward(p21, p3 - p21 + 1, '"', p21);
+	if(ret != 0)
+	{
+		return -1;
+	}
+	
+	if(p21 - 1 >= p1 && *(p21 - 1) == '\\')
+	{
+		p21 += 1;
+		goto retry2; //跳过 类似 /*\"*/
+	}
+
+	if((p21 - 1 >= p1 && *(p21 - 1) == '\'')
+		&& (p21 + 1 <= p3 && *(p21 + 1) == '\'')
+		)
+	{
+		p21 += 2;
+		goto retry2; //跳过 类似 char a = '"';
+	}
+
+	//--------------------
+	endPos = p21; //找着了右边的双引号
+
+	//----判断当前位置是否处于一对双引号之内------
+	if(curPos >= startPos && curPos <= endPos)
+	{
+		return 0;
+	}else if(curPos > endPos)
+	{
+		startPos = NULL;
+		endPos = NULL;
+		p21++;
+		goto retry1; //继续查找
+	}
+
+	return -1;
 }
 
 
@@ -1732,7 +1882,7 @@ int CFuncRoute::findAllClassAndStructDeclare(unsigned char *buffer, int bufferSi
 }
 
 
-int CFuncRoute::findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize, std::vector<CLASS_INSTANCE> &funcsWhichInFunctionBody, unsigned char *bufferBase, int lineNumberBase)
+int CFuncRoute::findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize, char *funcParameter, std::vector<CLASS_INSTANCE> &funcsWhichInFunctionBody, unsigned char *bufferBase, int lineNumberBase)
 {
 	int ret = 0;
 
@@ -1752,7 +1902,7 @@ int CFuncRoute::findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize
 			CLASS_INSTANCE ci;
 			memset(&ci, 0, sizeof(CLASS_INSTANCE));
 
-			ret = findWholeFuncCalled(p1, p3 - p1 + 1, p2, ci, bufferBase, lineNumber);
+			ret = findWholeFuncCalled(p1, p3 - p1 + 1, funcParameter, p2, ci, bufferBase, lineNumber);
 			if (ret == 0)
 			{
 				funcsWhichInFunctionBody.push_back(ci);
@@ -1773,7 +1923,7 @@ end:
 }
 
 
-int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, unsigned char *parentheseLeft, CLASS_INSTANCE &classInstance, unsigned char *bufferBase, int lineNumberBase)
+int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, char *funcParameter, unsigned char *parentheseLeft, CLASS_INSTANCE &classInstance, unsigned char *bufferBase, int lineNumberBase)
 {
 	int ret = 0;
 
@@ -2007,20 +2157,26 @@ int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, unsig
 	{
 		std::string classInstanceName  = classInstance.classInstanceName.str;
 		std::string varDeclareType = "";
+		
 		ret = findVarDeclareBack(p1, p21 - p1 + 1, classInstanceName, varDeclareType);
+		
+		std::string str33 = funcParameter;
+		if(str33 == "(int iInt, std::string str, B * b, std::vector<std::vector<std::string>> vec)")
+		{
+			int a = 1;
+		}
+
+		if (ret != 0) //再在函数参数列表中尝试反向查找实例对应的类名（如果是类的成员变量则会查不到）
+		{
+			ret = findVarDeclareBack((unsigned char *)funcParameter, strlen(funcParameter), classInstanceName, varDeclareType);
+		}
+
 		if (ret == 0)
 		{
 			int len = MIN(varDeclareType.length(), sizeof(classInstance.className.str) - 1);
 			memcpy(classInstance.className.str, varDeclareType.c_str(), len);
 			classInstance.className.str[len] = '\0';
 		}
-	}
-	
-	//-------在函数参数列表中尝试反向查找实例对应的类名（如果是类的成员变量则会查不到）-------------
-	if (classInstance.instanceType == VAR_TYPE_NORMAL || classInstance.instanceType == VAR_TYPE_POINTER)
-	{
-//		std::string classInstanceName  = classInstance.classInstanceName.str;
-//		std::string varDeclareType = "";
 	}
 
 	return 0;
@@ -3044,6 +3200,14 @@ int CFuncRoute::findVarDeclareBack(unsigned char *buffer, int bufferSize, std::s
 
 							ret = skipWhiteSpaceBack(p1, p21 - p1, p21, p21, lineNumber);
 							RETURN_IF_FAILED(ret, ret);
+							
+							while (*p21 == '*' || *p21 == '&') //类似 int * a = NULL; 或者 int & a = b; 则需要跳过'*'和'&'
+							{
+								p21--;
+
+								ret = skipWhiteSpaceBack(p1, p21 - p1, p21, p21, lineNumber);
+								RETURN_IF_FAILED(ret, ret);
+							}
 
 							//---------------------
 							STRING_POSITON sp;
@@ -3657,6 +3821,46 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			vFunctions[i].funcs[j].functionIndex = funcCnt++;
 		}
 	}
+	
+	for (int i = 0; i < len1; ++i)
+	{
+		int len2 = vFunctions[i].funcs.size();
+		for (int j = 0; j < len2; ++j)
+		{
+			FUNCTION_STRUCTURE funcStruct = vFunctions[i].funcs[j];
+
+			//------从结构体名中，提取函数类名-----------
+			if(strlen(vFunctions[i].funcs[j].className) > 0 && strlen(vFunctions[i].funcs[j].classNameAlias) <= 0 && strlen(vFunctions[i].funcs[j].structName) <= 0)
+			{
+				int lenClassName = strlen(vFunctions[i].funcs[j].className);
+			
+				std::string str = vFunctions[i].funcs[j].functionName.str;
+
+				for (int i2 = 0; i2 < len1; ++i2)
+				{
+					for (int j2 = 0; j2 < vFunctions[i2].classes.size(); ++j2)
+					{
+						if (vFunctions[i2].classes[j2].isStruct) //说明是结构体的成员函数
+						{
+							int len22 = strlen(vFunctions[i2].classes[j2].className.str);
+							int len33 = strlen(vFunctions[i2].classes[j2].classNameAlias.str);
+
+							if((lenClassName == len22 && memcmp(vFunctions[i2].classes[j2].className.str, vFunctions[i].funcs[j].className, lenClassName) == 0)
+								|| (lenClassName == len33 && memcmp(vFunctions[i2].classes[j2].classNameAlias.str, vFunctions[i].funcs[j].className, lenClassName) == 0)
+								)
+							{
+								memcpy(vFunctions[i].funcs[j].structName, vFunctions[i2].classes[j2].className.str, len22);
+								vFunctions[i].funcs[j].structName[len22] = '\0';
+
+								memcpy(vFunctions[i].funcs[j].classNameAlias, vFunctions[i2].classes[j2].classNameAlias.str, len33);
+								vFunctions[i].funcs[j].structName[len33] = '\0';
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
 	//-------更新父类的父类------------
 	ret = updateParentClass(vFunctions);
@@ -3897,10 +4101,6 @@ int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNC
 		int len2 = vFunctions[i].funcs.size();
 		for (int j = 0; j < len2; ++j)
 		{
-		if(j == 9)
-		{
-			int a = 0;
-		}
 			int queryFuncIndex = vFunctions[i].funcs[j].functionIndex;
 			ret = createFunsCalledTree(vFunctions, queryFuncIndex, arry, taotalFuncs);
 		}
@@ -3915,18 +4115,59 @@ int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNC
 		}
 	}
 	
-	//--------------------------
-	int len4 = trees.funcsIndexs.size();
-	for (int i = 0; i < len4; ++i)
+	//---------生成tex文件-----------------
+	if(m_filePathForPdfTex != "")
 	{
-		trees.funcsIndexs[i]->printInfo();
+		printf("m_filePathForPdfTex: %s;\n", m_filePathForPdfTex.c_str());
+
+		FILE * fp = fopen(m_filePathForPdfTex.c_str(), "w");
+		RETURN_IF_FAILED(fp == NULL, -1);
+
+		std::string strTex = "";
+
+		ret = createPdfTexHeader(strTex);
+		RETURN_IF_FAILED(ret, -1);
+		fwrite(strTex.c_str(), 1, strTex.length(), fp);
+		
+		ret = createPdfTexLogo(strTex);
+		RETURN_IF_FAILED(ret, -1);
+		fwrite(strTex.c_str(), 1, strTex.length(), fp);
+
+		int len4 = trees.funcsIndexs.size();
+		for (int i = 0; i < len4; ++i)
+		{
+//			if(trees.funcsIndexs[i]->funcIndex != 83){ continue; }
+
+			trees.funcsIndexs[i]->printInfo();
+			
+			strTex = "";
+			ret = createPdfTexBody(vFunctions, trees.funcsIndexs[i], strTex);
+			RETURN_IF_FAILED(ret, -1);
+
+			fwrite(strTex.c_str(), 1, strTex.length(), fp);
+		}
+		
+		strTex = "";
+		ret = createPdfTexTailer(strTex);
+		RETURN_IF_FAILED(ret, -1);
+		
+		fwrite(strTex.c_str(), 1, strTex.length(), fp);
+
+		fclose(fp);
 	}
 
-	for (int i = 0; i < len4; ++i)
+//	for (int i = 0; i < len4; ++i)
+//	{
+//		std::vector<_FUNC_INDEX_ *> funcs;
+//		funcs.push_back(trees.funcsIndexs[i]);
+//		trees.funcsIndexs[i]->printInfoFuncRoute(funcs);
+//	}
+
+	//--------------------------
+	if (arry)
 	{
-		std::vector<_FUNC_INDEX_ *> funcs;
-		funcs.push_back(trees.funcsIndexs[i]);
-		trees.funcsIndexs[i]->printInfoFuncRoute(funcs);
+		delete [] arry;
+		arry = NULL;
 	}
 
 	return ret;
@@ -4056,4 +4297,376 @@ int CFuncRoute::printInfo(std::vector<FUNCTIONS> &vFunctions)
 	}
 
 	return ret;
+}
+
+
+int CFuncRoute::createPdfTexHeader(std::string &strTexHeader)
+{
+	int ret = 0;
+	
+	//-----------生成tex文件头部----------------------
+	char strHeader[] = "\\documentclass[tikz]{standalone}\n"
+		"\\usetikzlibrary{trees}\n"
+		"\\begin{document}\n"
+		"\\tikzstyle{every node}=[shape=rectangle,rounded corners,draw=black,thick,top color=white,bottom color=blue!20,anchor=west]\n";
+
+	strTexHeader = strHeader;
+
+	return ret;
+}
+
+
+int CFuncRoute::createPdfTexLogo(std::string &strTexlogo)
+{
+	int ret = 0;
+	
+	//---------------------------------------
+	char szBuildDate1[60] = {0};
+	char szBuildDate2[60] = {0};
+
+	getBuildDate1(szBuildDate1); //获取编译日期
+	getBuildDate2(szBuildDate2); //获取编译日期和时间
+
+	//-----------生成tex文件logo----------------------
+	char strlogo[1024] = {0};
+	
+	sprintf(strlogo, "\\begin{tikzpicture}\n"
+		"\\node [align=center] {"
+		"FuncRoute version: %s\\\\"
+		"Build Date: %s\\\\"
+		"Author: jfu2\\\\"
+		"Email: 386520874@qq.com\\\\"
+		"GitHub addr https://github.com/jfu222/FuncRoute.git\\\\"
+		"Blog addr https://blog.csdn.net/jfu22"
+		"};\n"
+		"\\end{tikzpicture}\n",
+		VERSION_STR3(VERSION_STR), szBuildDate2);
+
+	strTexlogo = strlogo;
+
+	return ret;
+}
+
+
+int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody)
+{
+	int ret = 0;
+	
+	//-----------生成tex文件身体----------------------
+	//采用多叉树的前序遍历，即先遍历父节点，再遍历所有子节点
+	std::string texStr = "";
+	std::string spaceStr = "";
+	char strBody[1024] = { 0 };
+	int flag = 0;
+	int itemCnt = 0;
+
+	struct TEMP_NODE
+	{
+		_FUNC_INDEX_ * node;
+		int siblingsCnt;
+		int siblingsIndex;
+		int descendantsCnt; //子孙后代的数目
+		int depth;
+	};
+
+	std::stack<TEMP_NODE> stack;
+	std::stack<TEMP_NODE> stackTempNode;
+	std::map<int, int> hashRecursiveCnt;
+
+	TEMP_NODE tempNode;
+	memset(&tempNode, 0, sizeof(TEMP_NODE));
+
+	tempNode.node = rootNode;
+	tempNode.siblingsCnt = 1;
+	tempNode.siblingsIndex = 0;
+	tempNode.descendantsCnt = 0;
+	tempNode.depth = 0;
+
+	stack.push(tempNode);
+
+	while (stack.empty() == false)
+	{
+		TEMP_NODE tempNode1 = stack.top();
+		_FUNC_INDEX_ *node = tempNode1.node;
+
+		stack.pop();
+
+		//----------------------------
+		std::string functionName = vFunctions[node->index1].funcs[node->index2].functionName.str;
+
+		size_t pos = functionName.rfind("::");
+		if (pos == std::string::npos)
+		{
+			std::string className = vFunctions[node->index1].funcs[node->index2].className;
+			std::string classNameAlias = vFunctions[node->index1].funcs[node->index2].classNameAlias;
+			std::string structName = vFunctions[node->index1].funcs[node->index2].structName;
+			if (className != "")
+			{
+				functionName = className + "::" + functionName;
+			}
+			else if (classNameAlias != "")
+			{
+				functionName = classNameAlias + "::" + functionName;
+			}
+			else if (structName != "")
+			{
+				functionName = structName + "::" + functionName;
+			}
+		}
+
+		//-------加上文件名--------------
+		std::string filename = vFunctions[node->index1].fllename;
+		pos = filename.rfind("/");
+
+		if (pos == std::string::npos)
+		{
+			pos = filename.rfind("\\");
+		}
+
+		if (pos != std::string::npos)
+		{
+			std::string dir = filename.substr(0, pos);
+			
+			pos = dir.rfind("/");
+			if (pos == std::string::npos)
+			{
+				pos = dir.rfind("\\");
+			}
+
+			if (pos != std::string::npos)
+			{
+				filename = filename.substr(pos + 1);
+			}
+		}
+
+		functionName += "(" + filename + ":" + std::to_string(vFunctions[node->index1].funcs[node->index2].functionName.lineNumberOfStart) + ")";
+
+		//--------------将functionName中的"_"替换为"\\_"，原因是pdflatex会将"_"识别为数学标识符-----------------------
+		//latex的保留字符：'#','$','%','^','&','_','{','}','~','\'
+
+		int strLen = functionName.length();
+		char * strTmp = (char *)malloc(strLen * 2 + 1);
+		char * p = strTmp;
+		for (int i = 0; i < strLen; ++i)
+		{
+			if (functionName[i] == '#' || functionName[i] == '$' 
+				|| functionName[i] == '%' //|| functionName[i] == '~' 
+				|| functionName[i] == '&' || functionName[i] == '_' 
+				|| functionName[i] == '{' || functionName[i] == '}' 
+				)
+			{
+				*p = '\\';
+				p++;
+			}else if(functionName[i] == '\\')
+			{
+				*p = '/';
+				p++;
+				continue;
+			}else if(functionName[i] == '^' || functionName[i] == '~')
+			{
+				*p = '\\'; p++;
+				*p = functionName[i]; p++;
+				*p = '{'; p++;
+				*p = '}'; p++;
+				continue;
+			}else if(functionName[i] == '>')
+			{
+				char str[] = "\\textgreater";
+				memcpy(p, str, strlen(str));
+				p += strlen(str);
+				continue;
+			}else if(functionName[i] == '<')
+			{
+				char str[] = "\\textless";
+				memcpy(p, str, strlen(str));
+				p += strlen(str);
+				continue;
+			}
+			*p = functionName[i];
+			p++;
+		}
+		*p = '\0';
+		functionName = strTmp;
+		if (strTmp){ free(strTmp); strTmp = NULL; }
+
+		//---------------------
+		spaceStr = "";
+		for (int i = 0; i < tempNode1.depth; ++i)
+		{
+			spaceStr += "    ";
+		}
+
+		if (flag == 0)
+		{
+			sprintf(strBody, "\\node {[%d] %s}\n", node->funcIndex, functionName.c_str()); //_snprintf_s()
+			texStr = strBody;
+
+			flag = 1;
+		}
+		else
+		{
+			sprintf(strBody, "child { node {[%d] %s} \n", node->funcIndex, functionName.c_str());
+			texStr += spaceStr + strBody;
+			itemCnt++;
+		}
+
+		bool bRet = node->isRecursiveFunction(node->funcIndex);
+		if (bRet == true)
+		{
+			hashRecursiveCnt[node->funcIndex]++;
+			if (hashRecursiveCnt[node->funcIndex] >= 3) //递归函数被多次调用，则将计数再次清零
+			{
+				hashRecursiveCnt[node->funcIndex] = 1;
+			}
+		}
+
+		//---------------------
+		int len1 = node->childrenIndexs.size();
+
+		if (len1 == 0 || (bRet == true && hashRecursiveCnt[node->funcIndex] >= 2)) //处理右大括号
+		{
+			if (tempNode1.depth == 0) //说明整棵树只有一个root节点
+			{
+				break;
+			}
+
+			texStr += spaceStr + "    }\n";
+
+			if (tempNode1.siblingsIndex == tempNode1.siblingsCnt - 1) //说明是兄弟姐妹节点的最后一个节点
+			{
+				TEMP_NODE temp22 = tempNode1;
+
+				while (!stackTempNode.empty())
+				{
+					TEMP_NODE temp11 = stackTempNode.top(); //len1==0说明tempNode1.node是叶子节点，stackTempNode.top()是其父节点
+					stackTempNode.pop();
+
+					if (temp11.depth == 0) //说明整棵树只有一个root节点
+					{
+						break;
+					}
+
+					temp11.descendantsCnt += temp22.descendantsCnt + 1; //更新子孙后代节点数目
+
+					if (temp22.siblingsIndex == temp22.siblingsCnt - 1) //说明是兄弟姐妹节点的最后一个节点
+					{
+						texStr += spaceStr + "}\n";
+
+						for (int i = 0; i < temp11.descendantsCnt; ++i)
+						{
+							texStr += spaceStr + "child [missing] {}\n";
+						}
+						temp22 = temp11;
+					}
+					else //说明该节点后面还有其他兄弟姐妹节点
+					{
+						stackTempNode.push(temp11); //再入栈
+						break;
+					}
+				}
+			}
+			else
+			{
+				if (!stackTempNode.empty())
+				{
+					TEMP_NODE temp11 = stackTempNode.top(); //temp11是tempNode1的父节点，先出栈
+					stackTempNode.pop();
+
+					temp11.descendantsCnt += tempNode1.descendantsCnt + 1; //更新子孙后代节点数目
+
+					stackTempNode.push(temp11); //再入栈
+				}
+			}
+		}
+		else
+		{
+			if (bRet == true && hashRecursiveCnt[node->funcIndex] >= 2)
+			{
+				continue;
+			}
+
+			//-------------------------
+			stackTempNode.push(tempNode1);
+
+			//-------------------------
+			for (int i = len1 - 1; i >= 0; --i)
+			{
+				memset(&tempNode, 0, sizeof(TEMP_NODE));
+
+				tempNode.node = node->childrenIndexs[i];
+				tempNode.siblingsCnt = len1;
+				tempNode.siblingsIndex = i;
+				tempNode.descendantsCnt = 0;
+				tempNode.depth = tempNode1.depth + 1;
+
+				stack.push(tempNode);
+			}
+		}
+	}
+
+	texStr += ";\n";
+	
+	//----------------------------------------
+	char strBegin[] = "\\begin{tikzpicture}["
+		"grow via three points={one child at (0.5,-0.7) and two children at (0.5,-0.7) and (0.5,-1.4)}, "
+		"edge from parent path={(\\tikzparentnode.south) |- (\\tikzchildnode.west)}"
+		"]\n";
+		
+	char strEnd[] = "\\end{tikzpicture}\n\n";
+
+	strTexBody = strBegin + texStr + strEnd;
+
+	return ret;
+}
+
+
+int CFuncRoute::createPdfTexTailer(std::string &strTexTailer)
+{
+	int ret = 0;
+	
+	//-----------生成tex文件尾部----------------------
+	char strTailer[] = "\\end{document}\n";
+
+	strTexTailer = strTailer;
+
+	return ret;
+}
+
+
+//-----------------------------------------------
+int CFuncRoute::getBuildDate1(char *szBuildDate)
+{
+	char s_month[5];
+	int month = 0;
+	int day = 0;
+	int year = 0;
+
+	static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+
+	sscanf(__DATE__, "%s %d %d", s_month, &day, &year);
+
+	month = (strstr(month_names, s_month)-month_names)/3 + 1;
+
+	sprintf(szBuildDate, "%04d%02d%02d", year, month, day);
+
+	return 0;
+}
+
+
+int CFuncRoute::getBuildDate2(char *szBuildDate)
+{
+	char s_month[5];
+	int month = 0;
+	int day = 0;
+	int year = 0;
+
+	static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+
+	sscanf(__DATE__, "%s %d %d", s_month, &day, &year);
+
+	month = (strstr(month_names, s_month)-month_names)/3 + 1;
+	
+	sprintf(szBuildDate, "%04d-%02d-%02d %s", year, month, day, __TIME__);
+
+	return 0;
 }

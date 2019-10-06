@@ -11,10 +11,13 @@ int printHelp(int argc, char *argv[])
 	printf("====== Date: 2019.09.18 ======\n\n");
 
 	printf("Usage:\n");
-	printf("  %s <in|dirs_include> [in|dirs_exclude]\n", argv[0]);
+	printf("  %s <in|dirs_include> [in|dirs_exclude] [out|out_pdf.tex]\n", argv[0]);
 	printf("For Example:\n");
 	printf("  %s ./data1/src;./data2\n", argv[0]);
 	printf("  %s ./data1/src;./data2 ./data1/src/include;./data2/include\n", argv[0]);
+	printf("  %s ./data1/src;./data2 ./data1/src/include;./data2/include ./out_pdf.tex\n", argv[0]);
+	printf("\nNotice:\n");
+	printf("     You can ues command 'pdflatex ./out_pdf.tex' to create a pdf file which named './out_pdf.pdf'.\n");
 
 	return 0;
 }
@@ -26,7 +29,7 @@ int main(int argc, char *argv[])
 
 	int ret = 0;
 
-	if (argc != 2 && argc != 3)
+	if (argc != 2 && argc != 3 && argc != 4)
 	{
 		printHelp(argc, argv);
 		return -1;
@@ -46,13 +49,21 @@ int main(int argc, char *argv[])
 	}
 
 	//--------------
-	if (argc == 3)
+	if (argc == 3 || argc == 4)
 	{
 		dirs = argv[2];
-		ret = fr.splitDirsBySemicolon(dirs, fileDirsExclude);
-		if (ret != 0)
+		if(dirs.length() > 0)
 		{
-			return -1;
+			ret = fr.splitDirsBySemicolon(dirs, fileDirsExclude);
+			if (ret != 0)
+			{
+				return -1;
+			}
+		}
+
+		if (argc == 4)
+		{
+			fr.m_filePathForPdfTex = argv[3];
 		}
 	}
 

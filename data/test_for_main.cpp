@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <vector.h>
+#include <vector>
 
 #define CHECK_CUDA_ERROR_RETURN(err, msg)      if (err != CUDA_SUCCESS) { printf("error = %d\n", err); return -1; }
 
@@ -55,12 +55,12 @@ public:
 	{
 		std::vector<std::string> files;
 		std::vector<std::string> files2;
-
-		int ret = get_nested_dir_files(filePath.c_str(), files);
+		int ret = 0;
+//		ret = get_nested_dir_files(filePath.c_str(), files);
 		RETURN_IF_FAILED(ret != 0, ret);
 
 		//---------------------------
-		ret = recursiveFunc(1);
+		ret = recursiveFunc(ret);
 		int len1 = files.size();
 		return -2;
 	}
@@ -102,7 +102,8 @@ public:
 		return 0;
 	}
 
-	virtual unsigned int get2(int &a) = 0; //纯虚函数
+//	virtual unsigned int get2(int &a) = 0; //纯虚函数
+	virtual unsigned int get2(int &a); //虚函数
 	static unsigned int init()
 	{
 		printf("INFO: void init();\n");
@@ -142,7 +143,7 @@ B::~B()
 unsigned int //这是单行注释，返回值单独一行
 B::get2(int &a)
 {
-	A classA2;
+	A classA2; //Error: 不允许使用抽象类类型'A'的对象；函数"A::get2"是纯虚函数
 	unsigned long long *  ret1 = classA2.set(23, 642);
 	int ret = m_st_aaaa.set_ABC();
 	return -1;
@@ -183,7 +184,36 @@ public:
 public:
 	C(){}
 	~C(){}
+	B testParamList(int iInt, std::string str, B * b, std::vector<std::vector<std::string>> vec);
 };
+
+
+//测试函数体中，变量的声明在函数参数列表的情况
+B C::testParamList(int iInt, std::string str, B * b, std::vector<std::vector<std::string>> vec)
+{
+	int ret = 0;
+	B b1;
+	
+	if(b != NULL)
+	{
+		ST_AAAA stAAAA = returnClass(iInt);
+	}
+	
+	int len = str.length();
+	
+	int ret2 = b->get2(ret);
+	
+	for(int i = 0; i < vec.size(); ++i)
+	{
+		std::vector<std::string> vStr = vec[i];
+		for(int j = 0; j < vStr.size(); ++j)
+		{
+			printf("str: %s;\n", vStr[j].c_str());
+		}
+	}
+	
+	return b1;
+}
 
 /*
 这是多行注释
@@ -215,7 +245,8 @@ int main(int argc, char *argv[])
 		printf("%s: Error: ret=%d;\n", __FUNCTION__, ret);
 	}
 	
-		ret = recursiveFunc(1);
+	int rec;
+		ret = recursiveFunc(rec);
 
 	ret = pClassB2->set(3); //测试"->"调用函数
 	ret = pClassB2
@@ -230,7 +261,17 @@ int main(int argc, char *argv[])
 	}
 	
 	int s = 12;
-	ret = classB.get(a);
+	ret = classB.get(s);
 
+	//--------------
+	C * pClassC = new C;
+	B b1;
+	int iInt = 16;
+	std::string str;
+	B b23;
+	std::vector<std::vector<std::string>> vec;
+	
+	b1 = pClassC->testParamList(iInt, str, &b23, vec);
+	
 	return 0;//这是单行注释
 }
