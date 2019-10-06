@@ -5,6 +5,7 @@
 #include "./os/share_library.h"
 #include "CPPKeyword.h"
 #include "CKeyword.h"
+#include "version.h"
 
 
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
@@ -720,7 +721,7 @@ retry3:
 		}
 		
 		//--------查找函数体内部调用了哪些其他函数---------------
-		ret = findAllFuncsInFunctionBody(funcStruct.functionBody.start, funcStruct.functionBody.length, funcStruct.funcsWhichInFunctionBody, p1, funcStruct.functionBody.lineNumberOfStart);
+		ret = findAllFuncsInFunctionBody(funcStruct.functionBody.start, funcStruct.functionBody.length, funcStruct.functionParameter.str, funcStruct.funcsWhichInFunctionBody, p1, funcStruct.functionBody.lineNumberOfStart);
 		if (ret != 0)
 		{
 			ret = -8;
@@ -1050,52 +1051,37 @@ int CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferS
 	unsigned char *p21 = NULL;
 	unsigned char *p22 = NULL;
 	int doubleQuotationMarksFlag = 0; //双引号
+	unsigned char *startPos = NULL;
+	unsigned char *endPos = NULL;
 	int flag = 0;
+	
+	unsigned char *pNewline = p1;
 
 	//------先将被注释掉的代码用空格' '代替（换行号符'\n'保留）--------
 	while (p2 <= p3)
 	{
-/*		//双引号内部的双斜杠不代表注释的意思，需要跳过
-		if (*p2 == '"')
-		{
-			p21 = p2 + 1;
-			while (p21 <= p3)
-			{
-				if (*p21 == '"') //尝试查找配对的右边的双引号
-				{
-					flag = 0;
-					p22 = p21 - 1;
-					while (p22 >= p1)
-					{
-						if (*p22 == '\\') //判断是否是用反斜杠转义的双引号，如果是，则需要跳过
-						{
-							flag++;
-						}
-						else
-						{
-							break;
-						}
-						p22--;
-					}
-
-					if (flag % 2 == 0) //偶数倍，表示是配对的双引号，则结束查找
-					{
-						p2 = p21 + 1;
-						break;
-					}
-				}
-				p21++;
-			}
-		}
-*/
 		if (*p2 == '/') //被斜线(oblique line)"/"注释掉的字符串
 		{
-			p21 = p2;
-
 			if (p2 + 1 <= p3 && *(p2 + 1) == '*') //说明是用 "/*...*/" 进行的多行代码注释
 			{
+				//---------判断是否处于一对双引号内部---------
+				startPos = NULL;
+				endPos = NULL;
+				ret = findCurLineStartAndEndPos(p1, bufferSize, p2, startPos, endPos);
+				if(ret == 0)
+				{
+					ret = isBetweenInDoubleQuotes(startPos, endPos - startPos + 1, p2, startPos, endPos);
+					if(ret == 0)
+					{
+						p2 = endPos; //双引号内部的双斜杠不代表注释的意思，需要跳过
+						continue;
+					}
+				}
+				
+				//---------------
+				p21 = p2;
 				p2 += 2;
-
+				
 				while (p2 <= p3)
 				{
 					if (*p2 == '*' && p2 + 1 <= p3 && *(p2 + 1) == '/') //说明找到了"*/"
@@ -1119,6 +1105,21 @@ int CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferS
 			}
 			else if (p2 + 1 <= p3 && *(p2 + 1) == '/') //说明是用 "//..." 进行的单行代码注释
 			{
+				//---------判断是否处于一对双引号内部---------
+				startPos = NULL;
+				endPos = NULL;
+				ret = findCurLineStartAndEndPos(p1, bufferSize, p2, startPos, endPos);
+				if(ret == 0)
+				{
+					ret = isBetweenInDoubleQuotes(startPos, endPos - startPos + 1, p2, startPos, endPos);
+					if(ret == 0)
+					{
+						p2 = endPos; //双引号内部的双斜杠不代表注释的意思，需要跳过
+						continue;
+					}
+				}
+				
+				//---------------
 				while (p2 <= p3)
 				{
 					if (*p2 != '\n') //换行符不覆盖
@@ -1142,6 +1143,126 @@ int CFuncRoute::replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferS
 	}
 
 	return 0;
+}
+
+
+int CFuncRoute::findCurLineStartAndEndPos(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos)
+{
+	int ret = 0;
+	
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = curPos;
+	
+	startPos = NULL;
+	endPos = NULL;
+
+	while (p21 >= p1)
+	{
+		if(*p21 == '\n')
+		{
+			startPos = p21;
+			break;
+		}
+		p21--;
+	}
+	
+	p21 = curPos;
+	while (p21 <= p3)
+	{
+		if(*p21 == '\n')
+		{
+			endPos = p21;
+			break;
+		}
+		p21++;
+	}
+
+	if(startPos != NULL && endPos != NULL)
+	{
+		return 0;
+	}
+
+	return -1;
+}
+
+
+int CFuncRoute::isBetweenInDoubleQuotes(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos)
+{
+	int ret = 0;
+	
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = p1;
+	unsigned char *p22 = p1;
+	
+	startPos = NULL;
+	endPos = NULL;
+
+retry1:
+	ret = findCharForward(p21, p3 - p21 + 1, '"', p21);
+	if(ret != 0) //说明没找着左边的双引号
+	{
+		return -1;
+	}
+	
+	if(p21 - 1 >= p1 && *(p21 - 1) == '\\')
+	{
+		p21 += 1;
+		goto retry1; //跳过 类似 /*\"*/
+	}
+
+	if((p21 - 1 >= p1 && *(p21 - 1) == '\'')
+		&& (p21 + 1 <= p3 && *(p21 + 1) == '\'')
+		)
+	{
+		p21 += 2;
+		goto retry1; //跳过 类似 char a = '"';
+	}
+
+	//--------------------
+	startPos = p21; //找着了左边的双引号
+	p21++;
+
+retry2:
+	ret = findCharForward(p21, p3 - p21 + 1, '"', p21);
+	if(ret != 0)
+	{
+		return -1;
+	}
+	
+	if(p21 - 1 >= p1 && *(p21 - 1) == '\\')
+	{
+		p21 += 1;
+		goto retry2; //跳过 类似 /*\"*/
+	}
+
+	if((p21 - 1 >= p1 && *(p21 - 1) == '\'')
+		&& (p21 + 1 <= p3 && *(p21 + 1) == '\'')
+		)
+	{
+		p21 += 2;
+		goto retry2; //跳过 类似 char a = '"';
+	}
+
+	//--------------------
+	endPos = p21; //找着了右边的双引号
+
+	//----判断当前位置是否处于一对双引号之内------
+	if(curPos >= startPos && curPos <= endPos)
+	{
+		return 0;
+	}else if(curPos > endPos)
+	{
+		startPos = NULL;
+		endPos = NULL;
+		p21++;
+		goto retry1; //继续查找
+	}
+
+	return -1;
 }
 
 
@@ -1761,7 +1882,7 @@ int CFuncRoute::findAllClassAndStructDeclare(unsigned char *buffer, int bufferSi
 }
 
 
-int CFuncRoute::findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize, std::vector<CLASS_INSTANCE> &funcsWhichInFunctionBody, unsigned char *bufferBase, int lineNumberBase)
+int CFuncRoute::findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize, char *funcParameter, std::vector<CLASS_INSTANCE> &funcsWhichInFunctionBody, unsigned char *bufferBase, int lineNumberBase)
 {
 	int ret = 0;
 
@@ -1781,7 +1902,7 @@ int CFuncRoute::findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize
 			CLASS_INSTANCE ci;
 			memset(&ci, 0, sizeof(CLASS_INSTANCE));
 
-			ret = findWholeFuncCalled(p1, p3 - p1 + 1, p2, ci, bufferBase, lineNumber);
+			ret = findWholeFuncCalled(p1, p3 - p1 + 1, funcParameter, p2, ci, bufferBase, lineNumber);
 			if (ret == 0)
 			{
 				funcsWhichInFunctionBody.push_back(ci);
@@ -1802,7 +1923,7 @@ end:
 }
 
 
-int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, unsigned char *parentheseLeft, CLASS_INSTANCE &classInstance, unsigned char *bufferBase, int lineNumberBase)
+int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, char *funcParameter, unsigned char *parentheseLeft, CLASS_INSTANCE &classInstance, unsigned char *bufferBase, int lineNumberBase)
 {
 	int ret = 0;
 
@@ -2036,20 +2157,26 @@ int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, unsig
 	{
 		std::string classInstanceName  = classInstance.classInstanceName.str;
 		std::string varDeclareType = "";
+		
 		ret = findVarDeclareBack(p1, p21 - p1 + 1, classInstanceName, varDeclareType);
+		
+		std::string str33 = funcParameter;
+		if(str33 == "(int iInt, std::string str, B * b, std::vector<std::vector<std::string>> vec)")
+		{
+			int a = 1;
+		}
+
+		if (ret != 0) //再在函数参数列表中尝试反向查找实例对应的类名（如果是类的成员变量则会查不到）
+		{
+			ret = findVarDeclareBack((unsigned char *)funcParameter, strlen(funcParameter), classInstanceName, varDeclareType);
+		}
+
 		if (ret == 0)
 		{
 			int len = MIN(varDeclareType.length(), sizeof(classInstance.className.str) - 1);
 			memcpy(classInstance.className.str, varDeclareType.c_str(), len);
 			classInstance.className.str[len] = '\0';
 		}
-	}
-	
-	//-------在函数参数列表中尝试反向查找实例对应的类名（如果是类的成员变量则会查不到）-------------
-	if (classInstance.instanceType == VAR_TYPE_NORMAL || classInstance.instanceType == VAR_TYPE_POINTER)
-	{
-//		std::string classInstanceName  = classInstance.classInstanceName.str;
-//		std::string varDeclareType = "";
 	}
 
 	return 0;
@@ -3073,6 +3200,14 @@ int CFuncRoute::findVarDeclareBack(unsigned char *buffer, int bufferSize, std::s
 
 							ret = skipWhiteSpaceBack(p1, p21 - p1, p21, p21, lineNumber);
 							RETURN_IF_FAILED(ret, ret);
+							
+							while (*p21 == '*' || *p21 == '&') //类似 int * a = NULL; 或者 int & a = b; 则需要跳过'*'和'&'
+							{
+								p21--;
+
+								ret = skipWhiteSpaceBack(p1, p21 - p1, p21, p21, lineNumber);
+								RETURN_IF_FAILED(ret, ret);
+							}
 
 							//---------------------
 							STRING_POSITON sp;
@@ -3992,7 +4127,10 @@ int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNC
 
 		ret = createPdfTexHeader(strTex);
 		RETURN_IF_FAILED(ret, -1);
+		fwrite(strTex.c_str(), 1, strTex.length(), fp);
 		
+		ret = createPdfTexLogo(strTex);
+		RETURN_IF_FAILED(ret, -1);
 		fwrite(strTex.c_str(), 1, strTex.length(), fp);
 
 		int len4 = trees.funcsIndexs.size();
@@ -4178,6 +4316,38 @@ int CFuncRoute::createPdfTexHeader(std::string &strTexHeader)
 }
 
 
+int CFuncRoute::createPdfTexLogo(std::string &strTexlogo)
+{
+	int ret = 0;
+	
+	//---------------------------------------
+	char szBuildDate1[60] = {0};
+	char szBuildDate2[60] = {0};
+
+	getBuildDate1(szBuildDate1); //获取编译日期
+	getBuildDate2(szBuildDate2); //获取编译日期和时间
+
+	//-----------生成tex文件logo----------------------
+	char strlogo[1024] = {0};
+	
+	sprintf(strlogo, "\\begin{tikzpicture}\n"
+		"\\node [align=center] {"
+		"FuncRoute version: %s\\\\"
+		"Build Date: %s\\\\"
+		"Author: jfu2\\\\"
+		"Email: 386520874@qq.com\\\\"
+		"GitHub addr https://github.com/jfu222/FuncRoute.git\\\\"
+		"Blog addr https://blog.csdn.net/jfu22"
+		"};\n"
+		"\\end{tikzpicture}\n",
+		VERSION_STR3(VERSION_STR), szBuildDate2);
+
+	strTexlogo = strlogo;
+
+	return ret;
+}
+
+
 int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody)
 {
 	int ret = 0;
@@ -4344,6 +4514,10 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 		if (bRet == true)
 		{
 			hashRecursiveCnt[node->funcIndex]++;
+			if (hashRecursiveCnt[node->funcIndex] >= 3) //递归函数被多次调用，则将计数再次清零
+			{
+				hashRecursiveCnt[node->funcIndex] = 1;
+			}
 		}
 
 		//---------------------
@@ -4456,4 +4630,43 @@ int CFuncRoute::createPdfTexTailer(std::string &strTexTailer)
 	strTexTailer = strTailer;
 
 	return ret;
+}
+
+
+//-----------------------------------------------
+int CFuncRoute::getBuildDate1(char *szBuildDate)
+{
+	char s_month[5];
+	int month = 0;
+	int day = 0;
+	int year = 0;
+
+	static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+
+	sscanf(__DATE__, "%s %d %d", s_month, &day, &year);
+
+	month = (strstr(month_names, s_month)-month_names)/3 + 1;
+
+	sprintf(szBuildDate, "%04d%02d%02d", year, month, day);
+
+	return 0;
+}
+
+
+int CFuncRoute::getBuildDate2(char *szBuildDate)
+{
+	char s_month[5];
+	int month = 0;
+	int day = 0;
+	int year = 0;
+
+	static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+
+	sscanf(__DATE__, "%s %d %d", s_month, &day, &year);
+
+	month = (strstr(month_names, s_month)-month_names)/3 + 1;
+	
+	sprintf(szBuildDate, "%04d-%02d-%02d %s", year, month, day, __TIME__);
+
+	return 0;
 }

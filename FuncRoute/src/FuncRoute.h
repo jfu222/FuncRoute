@@ -29,13 +29,15 @@ public:
 	bool isKeywordVarType(unsigned char *buffer, int bufferSize); //字符串是否是C/C++语言变量关键词
 	int findOverloadOperatorsBack(unsigned char *buffer, int bufferSize, unsigned char *rightCharPos, unsigned char *&leftCharPos); //查找是否是C++可重载运算符
 	int replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferSize); //将所有用"//..."或"/*...*/"注释掉的代码用空格' '代替
+	int findCurLineStartAndEndPos(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos);
+	int isBetweenInDoubleQuotes(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos); //当前字符是否处于一对双引号之间
 	int replaceAllStrBySpace(unsigned char *buffer, int bufferSize); //将所有用双引号""的代码用空格' '代替
 	int replaceAllMacroDefineStrBySpace(unsigned char *buffer, int bufferSize); //将所有#define宏定义用空格' '代替
 	int findStr(unsigned char *buffer, int bufferSize, const char *str, int &pos); //在内存中，查找指定的字符串
 	int findAllMacros(std::vector<std::string> files, std::vector<MACRO> &macros); //从所有代码源文件中，找到所有的宏定义
 	int findAllClassAndStructDeclare(unsigned char *buffer, int bufferSize, std::vector<CLASS_STRUCT> &classes); //在内存中查找所有完整的C++类/结构体声明
-	int findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize, std::vector<CLASS_INSTANCE> &funcsWhichInFunctionBody, unsigned char *bufferBase, int lineNumberBase); //查找函数体内部调用的所有其他函数
-	int findWholeFuncCalled(unsigned char *buffer, int bufferSize, unsigned char *parentheseLeft, CLASS_INSTANCE &classInstance, unsigned char *bufferBase, int lineNumberBase); //给定左小括号'('的位置，返回一个完整的函数调用
+	int findAllFuncsInFunctionBody(unsigned char *buffer, int bufferSize, char *funcParameter, std::vector<CLASS_INSTANCE> &funcsWhichInFunctionBody, unsigned char *bufferBase, int lineNumberBase); //查找函数体内部调用的所有其他函数
+	int findWholeFuncCalled(unsigned char *buffer, int bufferSize, char *funcParameter, unsigned char *parentheseLeft, CLASS_INSTANCE &classInstance, unsigned char *bufferBase, int lineNumberBase); //给定左小括号'('的位置，返回一个完整的函数调用
 	int findWholeFuncDeclare(unsigned char *buffer, int bufferSize, unsigned char *parentheseLeft, FUNCTION_STRUCTURE &funcDeclare, unsigned char *bufferBase, int lineNumberBase); //给定左小括号'('的位置，返回一个完整的函数声明
 	int findNextMacroDefine(unsigned char *buffer, int bufferSize, unsigned char *&leftPos, unsigned char *&rightCharPos); //查找并返回下一个完整的#define宏声明
 	int findNextCodeComments(unsigned char *buffer, int bufferSize, unsigned char *&leftPos, unsigned char *&rightCharPos); //查找并返回下一个完整的注释语句
@@ -78,11 +80,13 @@ public:
 	int dumpBufferToFile(unsigned char *buffer, int bufferSize, char *filename); //将内存数据写到磁盘文件
 	int printInfo(std::vector<FUNCTIONS> &vFunctions);
 
-//	int createPdfTex2(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode); //生成 test.tex，可转换成 test.pdf
-
 	int createPdfTexHeader(std::string &strTexHeader); //生成 test.tex头部 ，可转换成 test.pdf
+	int createPdfTexLogo(std::string &strTexlogo); //生成 test.tex logo ，可转换成 test.pdf
 	int createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody); //生成 test.tex身体，转换成 test.pdf
 	int createPdfTexTailer(std::string &strTexTailer); //生成 test.tex尾部，可转换成 test.pdf
+	
+	int getBuildDate1(char *szBuildDate);
+	int getBuildDate2(char *szBuildDate);
 };
 
 #endif //__FUNC_ROUTE_H__

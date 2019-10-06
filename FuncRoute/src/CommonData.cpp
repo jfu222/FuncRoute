@@ -94,6 +94,7 @@ int _FUNC_INDEX_::printInfo()
 	std::vector<std::vector<_FUNC_INDEX_ *>> stackUncles;
 	std::vector<std::vector<_FUNC_INDEX_ *>> stackUnclesLast;
 	std::vector<_FUNC_INDEX_ *> stackTemp;
+	std::map<int, int> hashRecursiveCnt;
 	int parentCnt = 1;
 
 	//-----------多叉树按层次遍历----------------------
@@ -192,7 +193,16 @@ int _FUNC_INDEX_::printInfo()
 		}
 
 		bool bRet = node->isRecursiveFunction(node->funcIndex);
-		if (bRet == false) //不是递归函数
+		if (bRet == true)
+		{
+			hashRecursiveCnt[node->funcIndex]++;
+			if (hashRecursiveCnt[node->funcIndex] >= 3) //递归函数被多次调用，则将计数再次清零
+			{
+				hashRecursiveCnt[node->funcIndex] = 1;
+			}
+		}
+
+		if (bRet == false || hashRecursiveCnt[node->funcIndex] <= 1) //不是递归函数，或者最多打印一次递归函数体内部函数
 		{
 			int len = node->childrenIndexs.size();
 			for (int i = 0; i < len; ++i)
