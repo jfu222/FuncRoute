@@ -83,7 +83,7 @@ public:
 
 	int createPdfTexHeader(std::string &strTexHeader); //生成 test.tex头部 ，可转换成 test.pdf
 	int createPdfTexLogo(std::string &strTexlogo); //生成 test.tex logo ，可转换成 test.pdf
-	int createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody, FILE *fp); //生成 test.tex身体，转换成 test.pdf
+	int createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody, FILE *fp, long long &writeBytes); //生成 test.tex身体，转换成 test.pdf
 	int createPdfTexTailer(std::string &strTexTailer); //生成 test.tex尾部，可转换成 test.pdf
 	
 	int getBuildDate1(char *szBuildDate);

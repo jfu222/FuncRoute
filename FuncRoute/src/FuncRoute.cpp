@@ -4247,6 +4247,9 @@ int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNC
 	if(m_filePathForPdfTex != "")
 	{
 		printf("m_filePathForPdfTex: %s;\n", m_filePathForPdfTex.c_str());
+		int fileCnt = 1;
+		long long writeBytes = 0;
+		long long writeBytesTemp = 0;
 
 		FILE * fp = fopen(m_filePathForPdfTex.c_str(), "w");
 		RETURN_IF_FAILED(fp == NULL, -1);
@@ -4267,10 +4270,49 @@ int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNC
 //			trees.funcsIndexs[i]->printInfo();
 			
 			strTex = "";
-			ret = createPdfTexBody(vFunctions, trees.funcsIndexs[i], strTex, fp);
+			writeBytesTemp = 0;
+			ret = createPdfTexBody(vFunctions, trees.funcsIndexs[i], strTex, fp, writeBytesTemp);
 			RETURN_IF_FAILED(ret, -1);
+			writeBytes += writeBytesTemp;
 
-			fwrite(strTex.c_str(), 1, strTex.length(), fp);
+			if(strTex != "")
+			{
+				fwrite(strTex.c_str(), 1, strTex.length(), fp);
+			}
+
+			//----------单个文件超过500MB的时候，就分成多个文件---------------
+			long fileSize = ftell(fp);
+			printf("fileSize = %ld; 500 * 1024 * 1024 = %d; writeBytesTemp=%lld; writeBytes=%lld;\n", fileSize, 500 * 1024 * 1024, writeBytesTemp, writeBytes);
+			if(writeBytes > 500 * 1024 * 1024)
+			{
+				strTex = "";
+				ret = createPdfTexTailer(strTex);
+				RETURN_IF_FAILED(ret, -1);
+		
+				fwrite(strTex.c_str(), 1, strTex.length(), fp);
+
+				fclose(fp);
+
+				//------------------
+				writeBytes = 0;
+				char file[600] = {0};
+				sprintf(file, "%s.%d.tex", m_filePathForPdfTex.c_str(), fileCnt++);
+
+				printf("file: %s;\n", file);
+
+				fp = fopen(file, "w");
+				RETURN_IF_FAILED(fp == NULL, -1);
+
+				strTex = "";
+
+				ret = createPdfTexHeader(strTex);
+				RETURN_IF_FAILED(ret, -1);
+				fwrite(strTex.c_str(), 1, strTex.length(), fp);
+		
+				ret = createPdfTexLogo(strTex);
+				RETURN_IF_FAILED(ret, -1);
+				fwrite(strTex.c_str(), 1, strTex.length(), fp);
+			}
 		}
 		
 		strTex = "";
@@ -4474,9 +4516,11 @@ int CFuncRoute::createPdfTexLogo(std::string &strTexlogo)
 }
 
 
-int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody, FILE *fp)
+int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody, FILE *fp, long long &writeBytes)
 {
 	int ret = 0;
+	writeBytes = 0;
+	size_t writeSize = 0;
 	
 	//----------------------------------------
 	char strBegin[] = "\\begin{tikzpicture}["
@@ -4486,7 +4530,9 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 	
 	if (fp)
 	{
-		fwrite(strBegin, 1, strlen(strBegin), fp);
+		writeSize = fwrite(strBegin, strlen(strBegin), 1, fp);
+		RETURN_IF_FAILED(writeSize != 1, -1);
+		writeBytes += strlen(strBegin);
 	}
 
 	//-----------生成tex文件身体----------------------
@@ -4638,7 +4684,9 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 			sprintf(strBody, "\\node {[%d] %s}\n", node->funcIndex, functionName.c_str()); //_snprintf_s()
 			if(fp)
 			{
-				fwrite(strBody, 1, strlen(strBody), fp);
+				writeSize = fwrite(strBody, strlen(strBody), 1, fp);
+				RETURN_IF_FAILED(writeSize != 1, -1);
+				writeBytes += strlen(strBegin);
 			}else
 			{
 				texStr = strBody;
@@ -4651,8 +4699,12 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 			sprintf(strBody, "child { node {[%d] %s} \n", node->funcIndex, functionName.c_str());
 			if(fp)
 			{
-				fwrite(spaceStr.c_str(), 1, spaceStr.length(), fp);
-				fwrite(strBody, 1, strlen(strBody), fp);
+				writeSize = fwrite(spaceStr.c_str(), spaceStr.length(), 1, fp);
+				RETURN_IF_FAILED(writeSize != 1, -1);
+				writeBytes += strlen(strBegin);
+				writeSize = fwrite(strBody, strlen(strBody), 1, fp);
+				RETURN_IF_FAILED(writeSize != 1, -1);
+				writeBytes += strlen(strBegin);
 			}else
 			{
 				texStr += spaceStr + strBody;
@@ -4695,9 +4747,13 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 			
 			if(fp)
 			{
-				fwrite(spaceStr.c_str(), 1, spaceStr.length(), fp);
+				writeSize = fwrite(spaceStr.c_str(), spaceStr.length(), 1, fp);
+				RETURN_IF_FAILED(writeSize != 1, -1);
+				writeBytes += strlen(strBegin);
 				char strTemp[] = "    }\n";
-				fwrite(strTemp, 1, strlen(strTemp), fp);
+				writeSize = fwrite(strTemp, strlen(strTemp), 1, fp);
+				RETURN_IF_FAILED(writeSize != 1, -1);
+				writeBytes += strlen(strBegin);
 			}else
 			{
 				texStr += spaceStr + "    }\n";
@@ -4723,9 +4779,13 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 					{
 						if(fp)
 						{
-							fwrite(spaceStr.c_str(), 1, spaceStr.length(), fp);
+							writeSize = fwrite(spaceStr.c_str(), spaceStr.length(), 1, fp);
+							RETURN_IF_FAILED(writeSize != 1, -1);
+							writeBytes += strlen(strBegin);
 							char strTemp[] = "}\n";
-							fwrite(strTemp, 1, strlen(strTemp), fp);
+							writeSize = fwrite(strTemp, strlen(strTemp), 1, fp);
+							RETURN_IF_FAILED(writeSize != 1, -1);
+							writeBytes += strlen(strBegin);
 						}else
 						{
 							texStr += spaceStr + "}\n";
@@ -4735,9 +4795,13 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 						{
 							if(fp)
 							{
-								fwrite(spaceStr.c_str(), 1, spaceStr.length(), fp);
+								writeSize = fwrite(spaceStr.c_str(), spaceStr.length(), 1, fp);
+								RETURN_IF_FAILED(writeSize != 1, -1);
+								writeBytes += strlen(strBegin);
 								char strTemp[] = "child [missing] {}\n";
-								fwrite(strTemp, 1, strlen(strTemp), fp);
+								writeSize = fwrite(strTemp, strlen(strTemp), 1, fp);
+								RETURN_IF_FAILED(writeSize != 1, -1);
+								writeBytes += strlen(strBegin);
 							}else
 							{
 								texStr += spaceStr + "child [missing] {}\n";
@@ -4794,7 +4858,9 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 	if (fp)
 	{
 		char strTemp[] = ";\n";
-		fwrite(strTemp, 1, strlen(strTemp), fp);
+		writeSize = fwrite(strTemp, strlen(strTemp), 1, fp);
+		RETURN_IF_FAILED(writeSize != 1, -1);
+		writeBytes += strlen(strBegin);
 	} else
 	{
 		texStr += ";\n";
@@ -4805,7 +4871,9 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 	
 	if (fp)
 	{
-		fwrite(strEnd, 1, strlen(strEnd), fp);
+		writeSize = fwrite(strEnd, strlen(strEnd), 1, fp);
+		RETURN_IF_FAILED(writeSize != 1, -1);
+		writeBytes += strlen(strBegin);
 	}else
 	{
 		strTexBody = strBegin + texStr + strEnd;
