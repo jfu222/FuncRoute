@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "./os/share_library.h"
+#include "./os/timer.h"
 #include "CPPKeyword.h"
 #include "CKeyword.h"
 #include "version.h"
@@ -91,6 +92,8 @@ int CFuncRoute::splitDirsBySemicolon(std::string dirs, std::vector<std::string> 
 int CFuncRoute::findAllFunctionsName(std::vector<std::string> dirsInclude, std::vector<std::string> fileDirsExclude, std::vector<std::string> suffixes)
 {
 	int ret = 0;
+	long long timeSart = 0;
+	long long timeEnd = 0;
 	std::vector<std::string> files01;
 	std::vector<std::string> files02;
 	std::vector<std::string> files;
@@ -191,7 +194,9 @@ int CFuncRoute::findAllFunctionsName(std::vector<std::string> dirsInclude, std::
 
 	//---------提取每个文件里面的函数定义-------------------
 	std::vector<FUNCTIONS> allFuncs;
-
+	
+	timeSart = time_get_tick();
+	print_date_time("findAllFunctionsName(): 1: start ...");
 	printf("%s: ===========Total files number: %d;\n", __FUNCTION__, len3);
 
 	for (int i = 0; i < len3; ++i)
@@ -247,9 +252,17 @@ int CFuncRoute::findAllFunctionsName(std::vector<std::string> dirsInclude, std::
 			printf("[%d/%d] %s; line=%d;\n", i + 1, len2, functions.funcs[i].funcString, functions.funcs[i].functionName.lineNumberOfStart);
 		}
 	}
-
+	print_date_time("findAllFunctionsName(): 1: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
+	
 	//---------分析各个函数之间的调用关系--------------
+	timeSart = time_get_tick();
+	print_date_time("findAllFunctionsName(): 2: start ...");
 	ret = statAllFuns(allFuncs);
+	print_date_time("findAllFunctionsName(): 2: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
 
 	return ret;
 }
@@ -1197,6 +1210,7 @@ int CFuncRoute::isBetweenInDoubleQuotes(unsigned char *buffer, int bufferSize, u
 	unsigned char *p3 = buffer + bufferSize - 1;
 	unsigned char *p21 = p1;
 	unsigned char *p22 = p1;
+	int backslashCnt = 0; //连续反斜杆'\'的数目
 	
 	startPos = NULL;
 	endPos = NULL;
@@ -1208,7 +1222,15 @@ retry1:
 		return -1;
 	}
 	
-	if(p21 - 1 >= p1 && *(p21 - 1) == '\\')
+	backslashCnt = 0;
+	p22 = p21;
+	while(p22 - 1 >= p1 && *(p22 - 1) == '\\')
+	{
+		backslashCnt++;
+		p22--;
+	}
+
+	if(backslashCnt % 2 == 1) //奇数个
 	{
 		p21 += 1;
 		goto retry1; //跳过 类似 /*\"*/
@@ -1233,7 +1255,15 @@ retry2:
 		return -1;
 	}
 	
-	if(p21 - 1 >= p1 && *(p21 - 1) == '\\')
+	backslashCnt = 0;
+	p22 = p21;
+	while(p22 - 1 >= p1 && *(p22 - 1) == '\\')
+	{
+		backslashCnt++;
+		p22--;
+	}
+
+	if(backslashCnt % 2 == 1) //奇数个
 	{
 		p21 += 1;
 		goto retry2; //跳过 类似 /*\"*/
@@ -1266,6 +1296,101 @@ retry2:
 }
 
 
+int CFuncRoute::isBetweenInSingleQuotes(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos)
+{
+	int ret = 0;
+	
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = p1;
+	unsigned char *p22 = p1;
+	int backslashCnt = 0; //连续反斜杆'\'的数目
+	
+	startPos = NULL;
+	endPos = NULL;
+
+retry1:
+	ret = findCharForward(p21, p3 - p21 + 1, '\'', p21);
+	if(ret != 0) //说明没找着左边的单引号
+	{
+		return -1;
+	}
+	
+	backslashCnt = 0;
+	p22 = p21;
+	while(p22 - 1 >= p1 && *(p22 - 1) == '\\')
+	{
+		backslashCnt++;
+		p22--;
+	}
+
+	if(backslashCnt % 2 == 1) //奇数个
+	{
+		p21 += 1;
+		goto retry1; //跳过 类似 /*\'*/
+	}
+
+	if((p21 - 1 >= p1 && *(p21 - 1) == '"')
+		&& (p21 + 1 <= p3 && *(p21 + 1) == '"')
+		)
+	{
+		p21 += 2;
+		goto retry1; //跳过 类似 char a[] = "'";
+	}
+
+	//--------------------
+	startPos = p21; //找着了左边的单引号
+	p21++;
+
+retry2:
+	ret = findCharForward(p21, p3 - p21 + 1, '\'', p21);
+	if(ret != 0)
+	{
+		return -1;
+	}
+	
+	backslashCnt = 0;
+	p22 = p21;
+	while(p22 - 1 >= p1 && *(p22 - 1) == '\\')
+	{
+		backslashCnt++;
+		p22--;
+	}
+
+	if(backslashCnt % 2 == 1) //奇数个
+	{
+		p21 += 1;
+		goto retry2; //跳过 类似 /*\'*/
+	}
+
+	if((p21 - 1 >= p1 && *(p21 - 1) == '"')
+		&& (p21 + 1 <= p3 && *(p21 + 1) == '"')
+		)
+	{
+		p21 += 2;
+		goto retry2; //跳过 类似 char a[] = "'";
+	}
+
+	//--------------------
+	endPos = p21; //找着了右边的单引号
+
+	//----判断当前位置是否处于一对单引号之内------
+	if(curPos >= startPos && curPos <= endPos)
+	{
+		return 0;
+	}else if(curPos > endPos)
+	{
+		startPos = NULL;
+		endPos = NULL;
+		p21++;
+		goto retry1; //继续查找
+	}
+
+	return -1;
+}
+
+
 int CFuncRoute::replaceAllStrBySpace(unsigned char *buffer, int bufferSize)
 {
 	int ret = 0;
@@ -1275,101 +1400,58 @@ int CFuncRoute::replaceAllStrBySpace(unsigned char *buffer, int bufferSize)
 	unsigned char *p3 = buffer + bufferSize - 1;
 	unsigned char *p21 = NULL;
 	unsigned char *p22 = NULL;
+	unsigned char *startPos = NULL;
+	unsigned char *endPos = NULL;
 
-	//------先将两个连续的反斜杠"\\"用空格' '代替--------
+	//------先将两一对双引号内部的字符串用反单引号'`'代替--------
 	while (p2 <= p3 - 1)
 	{
-/*		ret = findNextCodeComments(p2, p3 - p2 + 1, p22, p2); //跳过注释掉的代码
-		if(ret == 0)
+		if (*p2 == '"')
 		{
-			p2++;
-		}
-*/
-		if (*p2 == '\\' && *(p2 + 1) == '\\') //两个连续的"\\"
-		{
-			*p2 = '`';
-			p2++;
-			*p2 = '`';
-		}
-		p2++;
-	}
-	
-	//------再将反斜杠"\w"转义字符用空格' '代替--------
-	p2 = p1;
-	while (p2 <= p3 - 1)
-	{
-/*		ret = findNextCodeComments(p2, p3 - p2 + 1, p22, p2); //跳过注释掉的代码
-		if(ret == 0)
-		{
-			p2++;
-		}
-*/
-
-		if (*p2 == '\\' && (*(p2 + 1) == '"' || *(p2 + 1) == '\''))
-		{
-			*p2 = '`';
-			p2++;
-			*p2 = '`';
-		}
-		p2++;
-	}
-
-	//------将单引号引'起来的代码用空格' '代替（换行号符'\n'保留）--------
-	int flag = 0;
-	p2 = p1;
-	while (p2 <= p3)
-	{
-/*		ret = findNextCodeComments(p2, p3 - p2 + 1, p22, p2); //跳过注释掉的代码
-		if(ret == 0)
-		{
-			p2++;
-		}
-*/
-		if (*p2 == '\'')
-		{
-			if (flag == 0)
+			if(p2 - 1 >= p1 && *(p2 - 1) != '\\')
 			{
-				flag = 1;
-				p21 = p2;
-			}
-			else if (flag == 1)
-			{
-				flag = 0;
-				while (p21 <= p2)
+				ret = findCurLineStartAndEndPos(p1, bufferSize, p2, startPos, endPos); //找到左单引号所在的行
+				if(ret == 0)
 				{
-					*p21 = '`'; //用空格' '代替
-					p21++;
+					ret = isBetweenInDoubleQuotes(startPos, endPos - startPos + 1, p2, startPos, endPos); //判断是否处于一对双引号内部
+					if(ret == 0)
+					{
+						p21 = startPos;
+						while(p21 <= endPos)
+						{
+							*p21 = '`'; //用反单引号'`'代替一对双引号内部的字符串
+							p21++;
+						}
+						p2 = endPos;
+					}
 				}
 			}
 		}
 		p2++;
 	}
 
-	//------将双引号引""起来的代码用空格' '代替（换行号符'\n'保留）--------
-	flag = 0;
+	//------再将两一对单引号内部的字符串用反单引号'`'代替--------
 	p2 = p1;
-	while (p2 <= p3)
+	while (p2 <= p3 - 1)
 	{
-/*		ret = findNextCodeComments(p2, p3 - p2 + 1, p22, p2); //跳过注释掉的代码
-		if(ret == 0)
+		if (*p2 == '\'')
 		{
-			p2++;
-		}
-*/
-
-		if (*p2 == '"')
-		{
-			if(flag == 0)
+			if(p2 - 1 >= p1 && *(p2 - 1) != '\\')
 			{
-				flag = 1;
-				p21 = p2;
-			}else if(flag == 1)
-			{
-				flag = 0;
-				while (p21 <= p2)
+				ret = findCurLineStartAndEndPos(p1, bufferSize, p2, startPos, endPos); //找到左单引号所在的行
+				if(ret == 0)
 				{
-					*p21 = '`'; //用空格' '代替
-					p21++;
+					ret = isBetweenInSingleQuotes(startPos, endPos - startPos + 1, p2, startPos, endPos); //判断是否处于一对双引号内部
+					if(ret == 0)
+					{
+						p21 = startPos;
+						while(p21 <= endPos)
+						{
+							*p21 = '`'; //用反单引号'`'代替一对双引号内部的字符串
+							p21++;
+						}
+						p2 = endPos;
+					}
 				}
 			}
 		}
@@ -3810,8 +3892,13 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 	int ret = 0;
 
 	int funcCnt = 1;
+	long long timeSart = 0;
+	long long timeEnd = 0;
 
 	//-------先对所有函数进行编号------------
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 1: start ...");
+
 	int len1 = vFunctions.size();
 	for (int i = 0; i < len1; ++i)
 	{
@@ -3821,6 +3908,13 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			vFunctions[i].funcs[j].functionIndex = funcCnt++;
 		}
 	}
+
+	print_date_time("statAllFuns(): 1: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
+	
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 2: start ...");
 	
 	for (int i = 0; i < len1; ++i)
 	{
@@ -3861,11 +3955,22 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			}
 		}
 	}
+	
+	print_date_time("statAllFuns(): 2: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
 
 	//-------更新父类的父类------------
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 3: start ...");
 	ret = updateParentClass(vFunctions);
+	print_date_time("statAllFuns(): 3: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
 
 	//-------更新函数体中C++类变量的类型------------
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 4: start ...");
 	for (int i = 0; i < len1; ++i)
 	{
 		int len2 = vFunctions[i].funcs.size();
@@ -3965,8 +4070,15 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			}
 		}
 	}
+	
+	print_date_time("statAllFuns(): 4: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
 
 	//-------再查找某个函数被哪些函数调用了------------
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 5: start ...");
+
 	for (int i = 0; i < len1; ++i)
 	{
 		int len2 = vFunctions[i].funcs.size();
@@ -4025,10 +4137,16 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 		}
 	}
 
+	print_date_time("statAllFuns(): 5: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
+
 	//--------打印所有信息-------------------
 //	ret = printInfo(vFunctions);
 
 	//--------打印统计信息-------------------
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 6: start ...");
 	printf("============Total files：%d;=======\n", vFunctions.size());
 	
 	for (int i = 0; i < len1; ++i)
@@ -4071,10 +4189,20 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			printf("\n");
 		}
 	}
+	
+	print_date_time("statAllFuns(): 6: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
 
 	//---------------------
 	FUNCS_CALLED_TREE trees;
+	
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 7: start ...");
 	ret = createAllFunsCalledTree(vFunctions, trees);
+	print_date_time("statAllFuns(): 7: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
 
 	return ret;
 }
@@ -4136,12 +4264,10 @@ int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNC
 		int len4 = trees.funcsIndexs.size();
 		for (int i = 0; i < len4; ++i)
 		{
-//			if(trees.funcsIndexs[i]->funcIndex != 83){ continue; }
-
-			trees.funcsIndexs[i]->printInfo();
+//			trees.funcsIndexs[i]->printInfo();
 			
 			strTex = "";
-			ret = createPdfTexBody(vFunctions, trees.funcsIndexs[i], strTex);
+			ret = createPdfTexBody(vFunctions, trees.funcsIndexs[i], strTex, fp);
 			RETURN_IF_FAILED(ret, -1);
 
 			fwrite(strTex.c_str(), 1, strTex.length(), fp);
@@ -4348,10 +4474,21 @@ int CFuncRoute::createPdfTexLogo(std::string &strTexlogo)
 }
 
 
-int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody)
+int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody, FILE *fp)
 {
 	int ret = 0;
 	
+	//----------------------------------------
+	char strBegin[] = "\\begin{tikzpicture}["
+		"grow via three points={one child at (0.5,-0.7) and two children at (0.5,-0.7) and (0.5,-1.4)}, "
+		"edge from parent path={(\\tikzparentnode.south) |- (\\tikzchildnode.west)}"
+		"]\n";
+	
+	if (fp)
+	{
+		fwrite(strBegin, 1, strlen(strBegin), fp);
+	}
+
 	//-----------生成tex文件身体----------------------
 	//采用多叉树的前序遍历，即先遍历父节点，再遍历所有子节点
 	std::string texStr = "";
@@ -4499,18 +4636,41 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 		if (flag == 0)
 		{
 			sprintf(strBody, "\\node {[%d] %s}\n", node->funcIndex, functionName.c_str()); //_snprintf_s()
-			texStr = strBody;
+			if(fp)
+			{
+				fwrite(strBody, 1, strlen(strBody), fp);
+			}else
+			{
+				texStr = strBody;
+			}
 
 			flag = 1;
 		}
 		else
 		{
 			sprintf(strBody, "child { node {[%d] %s} \n", node->funcIndex, functionName.c_str());
-			texStr += spaceStr + strBody;
+			if(fp)
+			{
+				fwrite(spaceStr.c_str(), 1, spaceStr.length(), fp);
+				fwrite(strBody, 1, strlen(strBody), fp);
+			}else
+			{
+				texStr += spaceStr + strBody;
+			}
 			itemCnt++;
 		}
 
-		bool bRet = node->isRecursiveFunction(node->funcIndex);
+		//----------------------
+		bool bRet = false;
+		std::map<int, int>::iterator it = hashRecursiveCnt.find(node->funcIndex);
+		if(it == hashRecursiveCnt.end())
+		{
+			bRet = node->isRecursiveFunction(node->funcIndex); //避免频繁调用检查递归的函数
+		}else
+		{
+			bRet = hashRecursiveCnt[node->funcIndex] == 0 ? false : true;
+		}
+
 		if (bRet == true)
 		{
 			hashRecursiveCnt[node->funcIndex]++;
@@ -4518,6 +4678,9 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 			{
 				hashRecursiveCnt[node->funcIndex] = 1;
 			}
+		}else
+		{
+			hashRecursiveCnt[node->funcIndex] = 0;
 		}
 
 		//---------------------
@@ -4529,8 +4692,16 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 			{
 				break;
 			}
-
-			texStr += spaceStr + "    }\n";
+			
+			if(fp)
+			{
+				fwrite(spaceStr.c_str(), 1, spaceStr.length(), fp);
+				char strTemp[] = "    }\n";
+				fwrite(strTemp, 1, strlen(strTemp), fp);
+			}else
+			{
+				texStr += spaceStr + "    }\n";
+			}
 
 			if (tempNode1.siblingsIndex == tempNode1.siblingsCnt - 1) //说明是兄弟姐妹节点的最后一个节点
 			{
@@ -4550,11 +4721,27 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 
 					if (temp22.siblingsIndex == temp22.siblingsCnt - 1) //说明是兄弟姐妹节点的最后一个节点
 					{
-						texStr += spaceStr + "}\n";
+						if(fp)
+						{
+							fwrite(spaceStr.c_str(), 1, spaceStr.length(), fp);
+							char strTemp[] = "}\n";
+							fwrite(strTemp, 1, strlen(strTemp), fp);
+						}else
+						{
+							texStr += spaceStr + "}\n";
+						}
 
 						for (int i = 0; i < temp11.descendantsCnt; ++i)
 						{
-							texStr += spaceStr + "child [missing] {}\n";
+							if(fp)
+							{
+								fwrite(spaceStr.c_str(), 1, spaceStr.length(), fp);
+								char strTemp[] = "child [missing] {}\n";
+								fwrite(strTemp, 1, strlen(strTemp), fp);
+							}else
+							{
+								texStr += spaceStr + "child [missing] {}\n";
+							}
 						}
 						temp22 = temp11;
 					}
@@ -4604,17 +4791,25 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 		}
 	}
 
-	texStr += ";\n";
-	
-	//----------------------------------------
-	char strBegin[] = "\\begin{tikzpicture}["
-		"grow via three points={one child at (0.5,-0.7) and two children at (0.5,-0.7) and (0.5,-1.4)}, "
-		"edge from parent path={(\\tikzparentnode.south) |- (\\tikzchildnode.west)}"
-		"]\n";
-		
-	char strEnd[] = "\\end{tikzpicture}\n\n";
+	if (fp)
+	{
+		char strTemp[] = ";\n";
+		fwrite(strTemp, 1, strlen(strTemp), fp);
+	} else
+	{
+		texStr += ";\n";
+	}
 
-	strTexBody = strBegin + texStr + strEnd;
+	//----------------------------------------
+	char strEnd[] = "\\end{tikzpicture}\n\n";
+	
+	if (fp)
+	{
+		fwrite(strEnd, 1, strlen(strEnd), fp);
+	}else
+	{
+		strTexBody = strBegin + texStr + strEnd;
+	}
 
 	return ret;
 }
@@ -4667,6 +4862,22 @@ int CFuncRoute::getBuildDate2(char *szBuildDate)
 	month = (strstr(month_names, s_month)-month_names)/3 + 1;
 	
 	sprintf(szBuildDate, "%04d-%02d-%02d %s", year, month, day, __TIME__);
+
+	return 0;
+}
+
+
+int CFuncRoute::printDeltaTime(long long timeStart, long long timeEnd)
+{
+	static long long freq = time_get_frequency();
+
+	long long total_ms = 1000 * (timeEnd - timeStart) / freq;
+	long total_seconnds = total_ms / 1000;
+	long total_mins = total_seconnds / 60;
+	long total_hours = total_mins / 60;
+
+	printf("total take time: %lld ms = %02d:%02d:%02d %d ms;\n", 
+		total_ms, total_hours, total_mins % 60, total_seconnds % 60, total_ms % 1000);
 
 	return 0;
 }

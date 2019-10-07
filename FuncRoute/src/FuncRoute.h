@@ -31,7 +31,8 @@ public:
 	int replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferSize); //将所有用"//..."或"/*...*/"注释掉的代码用空格' '代替
 	int findCurLineStartAndEndPos(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos);
 	int isBetweenInDoubleQuotes(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos); //当前字符是否处于一对双引号之间
-	int replaceAllStrBySpace(unsigned char *buffer, int bufferSize); //将所有用双引号""的代码用空格' '代替
+	int isBetweenInSingleQuotes(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos); //当前字符是否处于一对单引号之间
+	int replaceAllStrBySpace(unsigned char *buffer, int bufferSize); //将所有用双引号""的代码用反单引号'`'代替
 	int replaceAllMacroDefineStrBySpace(unsigned char *buffer, int bufferSize); //将所有#define宏定义用空格' '代替
 	int findStr(unsigned char *buffer, int bufferSize, const char *str, int &pos); //在内存中，查找指定的字符串
 	int findAllMacros(std::vector<std::string> files, std::vector<MACRO> &macros); //从所有代码源文件中，找到所有的宏定义
@@ -82,11 +83,12 @@ public:
 
 	int createPdfTexHeader(std::string &strTexHeader); //生成 test.tex头部 ，可转换成 test.pdf
 	int createPdfTexLogo(std::string &strTexlogo); //生成 test.tex logo ，可转换成 test.pdf
-	int createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody); //生成 test.tex身体，转换成 test.pdf
+	int createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody, FILE *fp); //生成 test.tex身体，转换成 test.pdf
 	int createPdfTexTailer(std::string &strTexTailer); //生成 test.tex尾部，可转换成 test.pdf
 	
 	int getBuildDate1(char *szBuildDate);
 	int getBuildDate2(char *szBuildDate);
+	int printDeltaTime(long long timeStart, long long timeEnd);
 };
 
 #endif //__FUNC_ROUTE_H__
