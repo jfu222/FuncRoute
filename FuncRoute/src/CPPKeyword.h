@@ -102,6 +102,7 @@ char cpp_keywords[][25] =
     "while",
     "xor",
     "xor_eq",
+    "__attribute__", //GNU C/C++，排除类似 const struct __attribute__((packed)) { uint32_t v; } *q = p; 这样的BT写法
 };
 
 
