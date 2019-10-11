@@ -16,6 +16,7 @@ public:
 	std::string m_srcCodesFilePath; //C/C++源代码文件路径
 	std::vector<std::string> m_fileSuffixes; //C/C++源代码文件后缀名（忽略大小写）数组，例如 [".h", ".hpp", ".c", ".cpp", ".cc", "*"]
 	std::string m_filePathForPdfTex; //用于生成pdf的tex文件，生成命令为“pdflatex ./out_FuncRoute.tex”，会在当前目录生成./out_FuncRoute.pdf文件
+	int m_rowMaxOfSinglePdfPage; //单张pdf最多有多少行，用于限制单张pdf页的大小，默认为500行
 
 public:
 	CFuncRoute();
@@ -83,12 +84,13 @@ public:
 	int printInfo(std::vector<FUNCTIONS> &vFunctions);
 
 	int createPdfTexHeader(std::string &strTexHeader); //生成 test.tex头部 ，可转换成 test.pdf
-	int createPdfTexLogo(std::string &strTexlogo); //生成 test.tex logo ，可转换成 test.pdf
+	int createPdfTexLogo(std::string &strTexlogo, int totalFuncs, int totalFuncsRefZero); //生成 test.tex logo ，可转换成 test.pdf
 	int createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ *rootNode, std::string &strTexBody, FILE *fp, long long &writeBytes, 
 		int colMax, int rowMax, int colBase, int rowBase, std::vector<FUNC_INDEX_POS> &vecNodes); //生成 test.tex身体，转换成 test.pdf
 	int createPdfTexBodySub(std::vector<FUNCTIONS> &vFunctions, FILE *fp, long long &writeBytes, int colMax, int rowMax, int colBase, int rowBase, std::vector<FUNC_INDEX_POS> &vecNodes); //生成 test.tex身体，转换成 test.pdf
 	int createPdfTexTailer(std::string &strTexTailer); //生成 test.tex尾部，可转换成 test.pdf
 	int getTexFuncName(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ *node, bool isRecursiveFunction, int cloNum, int rowNum, std::string &strFuncName);
+	int replaceTexEscapeCharacter(std::string strSrc, std::string &strDst); //替换tex转义字符
 	
 	int getBuildDate1(char *szBuildDate);
 	int getBuildDate2(char *szBuildDate);
