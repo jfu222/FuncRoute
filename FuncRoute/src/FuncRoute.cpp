@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "./os/share_library.h"
+#include "./os/timer.h"
 #include "CPPKeyword.h"
 #include "CKeyword.h"
 #include "version.h"
@@ -34,6 +35,7 @@ CFuncRoute::CFuncRoute()
 {
 	m_srcCodesFilePath = "";
 	m_filePathForPdfTex = "";
+	m_rowMaxOfSinglePdfPage = 500;
 }
 
 
@@ -91,6 +93,8 @@ int CFuncRoute::splitDirsBySemicolon(std::string dirs, std::vector<std::string> 
 int CFuncRoute::findAllFunctionsName(std::vector<std::string> dirsInclude, std::vector<std::string> fileDirsExclude, std::vector<std::string> suffixes)
 {
 	int ret = 0;
+	long long timeSart = 0;
+	long long timeEnd = 0;
 	std::vector<std::string> files01;
 	std::vector<std::string> files02;
 	std::vector<std::string> files;
@@ -191,7 +195,9 @@ int CFuncRoute::findAllFunctionsName(std::vector<std::string> dirsInclude, std::
 
 	//---------提取每个文件里面的函数定义-------------------
 	std::vector<FUNCTIONS> allFuncs;
-
+	
+	timeSart = time_get_tick();
+	print_date_time("findAllFunctionsName(): 1: start ...");
 	printf("%s: ===========Total files number: %d;\n", __FUNCTION__, len3);
 
 	for (int i = 0; i < len3; ++i)
@@ -247,9 +253,17 @@ int CFuncRoute::findAllFunctionsName(std::vector<std::string> dirsInclude, std::
 			printf("[%d/%d] %s; line=%d;\n", i + 1, len2, functions.funcs[i].funcString, functions.funcs[i].functionName.lineNumberOfStart);
 		}
 	}
-
+	print_date_time("findAllFunctionsName(): 1: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
+	
 	//---------分析各个函数之间的调用关系--------------
+	timeSart = time_get_tick();
+	print_date_time("findAllFunctionsName(): 2: start ...");
 	ret = statAllFuns(allFuncs);
+	print_date_time("findAllFunctionsName(): 2: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
 
 	return ret;
 }
@@ -423,7 +437,7 @@ retry0:
 		funcStruct.functionParameter.start = p21;
 		funcStruct.functionParameter.fileOffsetOfStart = funcStruct.functionParameter.end - p1;
 
-		lineNumber -= statBufferLinesCount(funcStruct.functionParameter.start, funcStruct.functionParameter.length);
+		lineNumber -= statBufferLinesCount(funcStruct.functionParameter.start, funcStruct.functionParameter.end - funcStruct.functionParameter.start + 1);
 		funcStruct.functionParameter.lineNumberOfStart = lineNumber;
 
 		//--------查找函数名----------------
@@ -456,6 +470,19 @@ retry0:
 		funcStruct.functionName.start = p21;
 		funcStruct.functionName.fileOffsetOfStart = funcStruct.functionName.start - p1;
 		funcStruct.functionName.lineNumberOfStart = lineNumber;
+
+		ret2 = isValidVarName(funcStruct.functionName.start, funcStruct.functionName.end - funcStruct.functionName.start + 1);
+		if (ret2 == false && isDestructor == false) //函数名不是由数字字母下划线组成
+		{
+			goto retry4;
+		}
+
+		//-----检查函数名是否是C++关键词，例如 if (a == 1) {} --------
+		ret2 = isKeyword(funcStruct.functionName.start, funcStruct.functionName.end - funcStruct.functionName.start + 1);
+		if (ret2) //函数名是C/C++语言关键词
+		{
+			goto retry4;
+		}
 
 		//------尝试查找C++类名-------
 		p21 = funcStruct.functionName.start - 1;
@@ -527,23 +554,16 @@ retry0:
 		}
 
 retry1:
-		//-----检查函数名是否是C++关键词，例如 if (a == 1) {} --------
-		ret2 = isKeyword(funcStruct.functionName.start, funcStruct.functionName.end - funcStruct.functionName.start + 1);
-		if (ret2) //函数名是C/C++语言关键词
-		{
-			goto retry4;
-		}
-
 		//--------查找函数参数右小括号后面紧跟的修饰符----------------
 		lineNumber = funcStruct.functionBody.lineNumberOfStart;
 		p21 = funcStruct.functionBody.start - 1;
-		p23 = funcStruct.functionName.end + 1;
+		p23 = funcStruct.functionParameter.end + 1;
 
 		ret = skipWhiteSpaceBack(p23, p21 - p23 + 1, p21, p21, lineNumber);
 //		RETURN_IF_FAILED(ret, ret);
 
 		p22 = p21;
-		ret = findStrBack(p1, p22 - p1 + 1, p22, p21);
+		ret = findStrBack(p23, p22 - p23 + 1, p22, p21);
 		if (ret == 0)
 		{
 			ret2 = isKeyword(p21, p22 - p21 + 1);
@@ -556,6 +576,17 @@ retry1:
 				funcStruct.functionTypeQualifier.end = p22;
 				funcStruct.functionTypeQualifier.fileOffsetOfEnd = funcStruct.functionTypeQualifier.end - p1;
 				funcStruct.functionTypeQualifier.lineNumberOfEnd = lineNumber;
+			}
+			else
+			{
+				//FIXME:
+			}
+		}
+		else
+		{
+			if (isWhiteSpace(*p22) == false) //FIXME:
+			{
+				goto retry4;
 			}
 		}
 
@@ -816,6 +847,7 @@ retry4:
 		if (*p21 == '\n')
 		{
 			lineNumber++;
+			p21++;
 		}
 		p1 = p21; //更新 p1 的值
 	}
@@ -1197,6 +1229,7 @@ int CFuncRoute::isBetweenInDoubleQuotes(unsigned char *buffer, int bufferSize, u
 	unsigned char *p3 = buffer + bufferSize - 1;
 	unsigned char *p21 = p1;
 	unsigned char *p22 = p1;
+	int backslashCnt = 0; //连续反斜杆'\'的数目
 	
 	startPos = NULL;
 	endPos = NULL;
@@ -1208,7 +1241,15 @@ retry1:
 		return -1;
 	}
 	
-	if(p21 - 1 >= p1 && *(p21 - 1) == '\\')
+	backslashCnt = 0;
+	p22 = p21;
+	while(p22 - 1 >= p1 && *(p22 - 1) == '\\')
+	{
+		backslashCnt++;
+		p22--;
+	}
+
+	if(backslashCnt % 2 == 1) //奇数个
 	{
 		p21 += 1;
 		goto retry1; //跳过 类似 /*\"*/
@@ -1233,7 +1274,15 @@ retry2:
 		return -1;
 	}
 	
-	if(p21 - 1 >= p1 && *(p21 - 1) == '\\')
+	backslashCnt = 0;
+	p22 = p21;
+	while(p22 - 1 >= p1 && *(p22 - 1) == '\\')
+	{
+		backslashCnt++;
+		p22--;
+	}
+
+	if(backslashCnt % 2 == 1) //奇数个
 	{
 		p21 += 1;
 		goto retry2; //跳过 类似 /*\"*/
@@ -1266,6 +1315,101 @@ retry2:
 }
 
 
+int CFuncRoute::isBetweenInSingleQuotes(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos)
+{
+	int ret = 0;
+	
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+	unsigned char *p21 = p1;
+	unsigned char *p22 = p1;
+	int backslashCnt = 0; //连续反斜杆'\'的数目
+	
+	startPos = NULL;
+	endPos = NULL;
+
+retry1:
+	ret = findCharForward(p21, p3 - p21 + 1, '\'', p21);
+	if(ret != 0) //说明没找着左边的单引号
+	{
+		return -1;
+	}
+	
+	backslashCnt = 0;
+	p22 = p21;
+	while(p22 - 1 >= p1 && *(p22 - 1) == '\\')
+	{
+		backslashCnt++;
+		p22--;
+	}
+
+	if(backslashCnt % 2 == 1) //奇数个
+	{
+		p21 += 1;
+		goto retry1; //跳过 类似 /*\'*/
+	}
+
+	if((p21 - 1 >= p1 && *(p21 - 1) == '"')
+		&& (p21 + 1 <= p3 && *(p21 + 1) == '"')
+		)
+	{
+		p21 += 2;
+		goto retry1; //跳过 类似 char a[] = "'";
+	}
+
+	//--------------------
+	startPos = p21; //找着了左边的单引号
+	p21++;
+
+retry2:
+	ret = findCharForward(p21, p3 - p21 + 1, '\'', p21);
+	if(ret != 0)
+	{
+		return -1;
+	}
+	
+	backslashCnt = 0;
+	p22 = p21;
+	while(p22 - 1 >= p1 && *(p22 - 1) == '\\')
+	{
+		backslashCnt++;
+		p22--;
+	}
+
+	if(backslashCnt % 2 == 1) //奇数个
+	{
+		p21 += 1;
+		goto retry2; //跳过 类似 /*\'*/
+	}
+
+	if((p21 - 1 >= p1 && *(p21 - 1) == '"')
+		&& (p21 + 1 <= p3 && *(p21 + 1) == '"')
+		)
+	{
+		p21 += 2;
+		goto retry2; //跳过 类似 char a[] = "'";
+	}
+
+	//--------------------
+	endPos = p21; //找着了右边的单引号
+
+	//----判断当前位置是否处于一对单引号之内------
+	if(curPos >= startPos && curPos <= endPos)
+	{
+		return 0;
+	}else if(curPos > endPos)
+	{
+		startPos = NULL;
+		endPos = NULL;
+		p21++;
+		goto retry1; //继续查找
+	}
+
+	return -1;
+}
+
+
 int CFuncRoute::replaceAllStrBySpace(unsigned char *buffer, int bufferSize)
 {
 	int ret = 0;
@@ -1275,101 +1419,58 @@ int CFuncRoute::replaceAllStrBySpace(unsigned char *buffer, int bufferSize)
 	unsigned char *p3 = buffer + bufferSize - 1;
 	unsigned char *p21 = NULL;
 	unsigned char *p22 = NULL;
+	unsigned char *startPos = NULL;
+	unsigned char *endPos = NULL;
 
-	//------先将两个连续的反斜杠"\\"用空格' '代替--------
+	//------先将两一对双引号内部的字符串用反单引号'`'代替--------
 	while (p2 <= p3 - 1)
 	{
-/*		ret = findNextCodeComments(p2, p3 - p2 + 1, p22, p2); //跳过注释掉的代码
-		if(ret == 0)
+		if (*p2 == '"')
 		{
-			p2++;
-		}
-*/
-		if (*p2 == '\\' && *(p2 + 1) == '\\') //两个连续的"\\"
-		{
-			*p2 = '`';
-			p2++;
-			*p2 = '`';
-		}
-		p2++;
-	}
-	
-	//------再将反斜杠"\w"转义字符用空格' '代替--------
-	p2 = p1;
-	while (p2 <= p3 - 1)
-	{
-/*		ret = findNextCodeComments(p2, p3 - p2 + 1, p22, p2); //跳过注释掉的代码
-		if(ret == 0)
-		{
-			p2++;
-		}
-*/
-
-		if (*p2 == '\\' && (*(p2 + 1) == '"' || *(p2 + 1) == '\''))
-		{
-			*p2 = '`';
-			p2++;
-			*p2 = '`';
-		}
-		p2++;
-	}
-
-	//------将单引号引'起来的代码用空格' '代替（换行号符'\n'保留）--------
-	int flag = 0;
-	p2 = p1;
-	while (p2 <= p3)
-	{
-/*		ret = findNextCodeComments(p2, p3 - p2 + 1, p22, p2); //跳过注释掉的代码
-		if(ret == 0)
-		{
-			p2++;
-		}
-*/
-		if (*p2 == '\'')
-		{
-			if (flag == 0)
+			if(p2 - 1 >= p1 && *(p2 - 1) != '\\')
 			{
-				flag = 1;
-				p21 = p2;
-			}
-			else if (flag == 1)
-			{
-				flag = 0;
-				while (p21 <= p2)
+				ret = findCurLineStartAndEndPos(p1, bufferSize, p2, startPos, endPos); //找到左单引号所在的行
+				if(ret == 0)
 				{
-					*p21 = '`'; //用空格' '代替
-					p21++;
+					ret = isBetweenInDoubleQuotes(startPos, endPos - startPos + 1, p2, startPos, endPos); //判断是否处于一对双引号内部
+					if(ret == 0)
+					{
+						p21 = startPos;
+						while(p21 <= endPos)
+						{
+							*p21 = '`'; //用反单引号'`'代替一对双引号内部的字符串
+							p21++;
+						}
+						p2 = endPos;
+					}
 				}
 			}
 		}
 		p2++;
 	}
 
-	//------将双引号引""起来的代码用空格' '代替（换行号符'\n'保留）--------
-	flag = 0;
+	//------再将两一对单引号内部的字符串用反单引号'`'代替--------
 	p2 = p1;
-	while (p2 <= p3)
+	while (p2 <= p3 - 1)
 	{
-/*		ret = findNextCodeComments(p2, p3 - p2 + 1, p22, p2); //跳过注释掉的代码
-		if(ret == 0)
+		if (*p2 == '\'')
 		{
-			p2++;
-		}
-*/
-
-		if (*p2 == '"')
-		{
-			if(flag == 0)
+			if(p2 - 1 >= p1 && *(p2 - 1) != '\\')
 			{
-				flag = 1;
-				p21 = p2;
-			}else if(flag == 1)
-			{
-				flag = 0;
-				while (p21 <= p2)
+				ret = findCurLineStartAndEndPos(p1, bufferSize, p2, startPos, endPos); //找到左单引号所在的行
+				if(ret == 0)
 				{
-					*p21 = '`'; //用空格' '代替
-					p21++;
+					ret = isBetweenInSingleQuotes(startPos, endPos - startPos + 1, p2, startPos, endPos); //判断是否处于一对双引号内部
+					if(ret == 0)
+					{
+						p21 = startPos;
+						while(p21 <= endPos)
+						{
+							*p21 = '`'; //用反单引号'`'代替一对双引号内部的字符串
+							p21++;
+						}
+						p2 = endPos;
+					}
 				}
 			}
 		}
@@ -1614,12 +1715,12 @@ int CFuncRoute::findAllMacros(std::vector<std::string> files, std::vector<MACRO>
 									if(memcmp(p21, "\\\r\n", 3) == 0) //for windows
 									{
 										memset(p21, ' ', 3); //用空格替换
-										p21 += 3;
+										p21 += 2;
 									}
 									else if(memcmp(p21, "\\\n", 2) == 0) //for linux
 									{
 										memset(p21, ' ', 2); //用空格替换
-										p21 += 2;
+										p21 += 1;
 									}else if(*p21 == '\n') //宏定义的最后一行换行符
 									{
 										break;
@@ -1634,26 +1735,29 @@ int CFuncRoute::findAllMacros(std::vector<std::string> files, std::vector<MACRO>
 									int macroBodyLen = p21 - p22 + 1;
 									if(macroBodyLen > sizeof(macro.macroBody) - 1)
 									{
-										ret = -6;
-										printf("%s(%d): %s: Error: ret=%d; lineNumber=%d;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber);
-										break;
+										memcpy(macro.macroBody, p22, sizeof(macro.macroBody) - 1);//FIXME: 暂时进行截断处理
+										macro.macroBody[sizeof(macro.macroBody) - 1] = '\0';
+										printf("%s(%d): %s: Error: ret=%d; lineNumber=%d; macroBodyLen(%d) > %d - 1;\n", __FILE__, __LINE__, __FUNCTION__, ret, lineNumber, macroBodyLen, sizeof(macro.macroBody));
 									}
-									char * p41 = macro.macroBody;
-
-									while(p22 <= p21)
+									else
 									{
-										if(*p22 == ' ' || *p22 == '\t' || *p22 == '\r' || *p22 == '\n')
+										char * p41 = macro.macroBody;
+
+										while (p22 <= p21)
 										{
-											*p41 = ' '; //用一个空格代替
+											if (*p22 == ' ' || *p22 == '\t' || *p22 == '\r' || *p22 == '\n')
+											{
+												*p41 = ' '; //用一个空格代替
+											}
+											else
+											{
+												*p41 = *p22;
+												p41++;
+											}
+											p22++;
 										}
-										else
-										{
-											*p41 = *p22;
-											p41++;
-										}
-										p22++;
+										*p41 = '\0';
 									}
-									*p41 = '\0';
 
 									//-------查找到一个完整的宏定义----------
 									macros.push_back(macro); //注意：有的宏定义里面还有宏定义，即宏定义嵌套，需要在后面再次展开宏定义
@@ -1934,6 +2038,7 @@ int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, char 
 	unsigned char *p21 = NULL;
 	unsigned char *p22 = NULL;
 	int lineNumber = lineNumberBase;
+	bool ret2 = false;
 
 	int flag = 0;
 
@@ -1987,6 +2092,12 @@ int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, char 
 
 	classInstance.functionName.length = classInstance.functionName.end - classInstance.functionName.start + 1;
 	classInstance.functionName.copyStrFromBuffer();
+
+	ret2 = isValidVarName(classInstance.functionName.start, classInstance.functionName.end - classInstance.functionName.start + 1);
+	if (ret2 == false) //函数名不是由数字字母下划线组成
+	{
+		return -1;
+	}
 
 	if (isKeyword((unsigned char *)classInstance.functionName.str, classInstance.functionName.length) == true) //类似 if( a == 2 ) 被当成函数调用了
 	{
@@ -2161,10 +2272,6 @@ int CFuncRoute::findWholeFuncCalled(unsigned char *buffer, int bufferSize, char 
 		ret = findVarDeclareBack(p1, p21 - p1 + 1, classInstanceName, varDeclareType);
 		
 		std::string str33 = funcParameter;
-		if(str33 == "(int iInt, std::string str, B * b, std::vector<std::vector<std::string>> vec)")
-		{
-			int a = 1;
-		}
 
 		if (ret != 0) //再在函数参数列表中尝试反向查找实例对应的类名（如果是类的成员变量则会查不到）
 		{
@@ -2540,6 +2647,11 @@ int CFuncRoute::skipWhiteSpaceBack(unsigned char *buffer, int bufferSize, unsign
 	if (p21 >= p1)
 	{
 		leftPos = p21;
+		return 0;
+	}
+	else if (p21 + 1 == p1)
+	{
+		leftPos = p1;
 		return 0;
 	}
 
@@ -3265,6 +3377,35 @@ int CFuncRoute::findVarDeclareBack(unsigned char *buffer, int bufferSize, std::s
 }
 
 
+bool CFuncRoute::isValidVarName(unsigned char *buffer, int bufferSize)
+{
+	unsigned char *p1 = buffer;
+	unsigned char *p2 = buffer;
+	unsigned char *p3 = buffer + bufferSize - 1;
+
+	while (p2 <= p3)
+	{
+		if ((*p2 >= '0' && *p2 <= '9')
+			|| (*p2 >= 'a' && *p2 <= 'z')
+			|| (*p2 >= 'A' && *p2 <= 'Z')
+			|| (*p2 == '_') //C++ 函数名和变量命名规则，数字 + 字母 + 下划线
+			)
+		{
+			if ((*p2 >= '0' && *p2 <= '9') && p2 == p1) //变量名不能以数字开头
+			{
+				return false;
+			}
+		}
+		else
+		{
+			return false;
+		}
+		p2++;
+	}
+	return true;
+}
+
+
 bool CFuncRoute::isValidVarChar(char ch)
 {
 	if ((ch >= '0' && ch <= '9')
@@ -3810,8 +3951,13 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 	int ret = 0;
 
 	int funcCnt = 1;
+	long long timeSart = 0;
+	long long timeEnd = 0;
 
 	//-------先对所有函数进行编号------------
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 1: start ...");
+
 	int len1 = vFunctions.size();
 	for (int i = 0; i < len1; ++i)
 	{
@@ -3821,6 +3967,13 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			vFunctions[i].funcs[j].functionIndex = funcCnt++;
 		}
 	}
+
+	print_date_time("statAllFuns(): 1: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
+	
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 2: start ...");
 	
 	for (int i = 0; i < len1; ++i)
 	{
@@ -3861,11 +4014,22 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			}
 		}
 	}
+	
+	print_date_time("statAllFuns(): 2: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
 
 	//-------更新父类的父类------------
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 3: start ...");
 	ret = updateParentClass(vFunctions);
+	print_date_time("statAllFuns(): 3: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
 
 	//-------更新函数体中C++类变量的类型------------
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 4: start ...");
 	for (int i = 0; i < len1; ++i)
 	{
 		int len2 = vFunctions[i].funcs.size();
@@ -3878,10 +4042,11 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 				std::string classInstanceName1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].classInstanceName.str;
 				std::string className1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str;
 				std::string className12 = vFunctions[i].funcs[j].className;
+				std::string structName2 = vFunctions[i].funcs[j].structName;
 				std::string classNameAlias12 = vFunctions[i].funcs[j].classNameAlias;
 				std::string functionName1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionName.str;
 				
-				if (className1 == "") //实例没有填充类名的情况下，才遍历查找
+				if (className1 == "" && (className12 != "" || classNameAlias12 != "" || structName2 != "")) //实例没有填充类名的情况下，才遍历查找
 				{
 					for (int i2 = 0; i2 < len1; ++i2)
 					{
@@ -3965,8 +4130,15 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			}
 		}
 	}
+	
+	print_date_time("statAllFuns(): 4: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
 
 	//-------再查找某个函数被哪些函数调用了------------
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 5: start ...");
+
 	for (int i = 0; i < len1; ++i)
 	{
 		int len2 = vFunctions[i].funcs.size();
@@ -3977,6 +4149,7 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 
 			for (int k = 0; k < len3; ++k)
 			{
+				int flag = 0;
 				std::string functionName1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionName.str;
 				std::string className1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].className.str;
 				std::string functionArgs1 = vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionArgs.str;
@@ -4011,24 +4184,44 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 								|| (className1 == "" && className2 == "" && classNameAlias21 == "")
 								)
 							{
+								if (className1 == "" && className2 == "" && classNameAlias21 == ""
+									&& i == i2 //说明是同一个cpp文件中的局部全局函数，仅本文件中的其他函数可调用本函数
+									)
+								{
+									vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionIndex = vFunctions[i2].funcs[j2].functionIndex;
+									flag = 1;
+									break;
+								}
+
 								if (vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionIndex == 0
 									|| className1 == className2
-									) //FIXME
+									) //FIXME: 有一种情况是，有两个同名函数，在两不同的cpp文件中(例如: test1.cpp, test2.cpp)定义，但只有test1.h导出了函数，test2.cpp中使用了static修饰函数
 								{
 									vFunctions[i].funcs[j].funcsWhichInFunctionBody[k].functionIndex = vFunctions[i2].funcs[j2].functionIndex;
 								}
 							}
 						}
 					}
+
+					if (flag == 1)
+					{
+						break; //已经找到了，就不再继续找了
+					}
 				}
 			}
 		}
 	}
 
+	print_date_time("statAllFuns(): 5: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
+
 	//--------打印所有信息-------------------
 //	ret = printInfo(vFunctions);
 
 	//--------打印统计信息-------------------
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 6: start ...");
 	printf("============Total files：%d;=======\n", vFunctions.size());
 	
 	for (int i = 0; i < len1; ++i)
@@ -4071,10 +4264,20 @@ int CFuncRoute::statAllFuns(std::vector<FUNCTIONS> &vFunctions)
 			printf("\n");
 		}
 	}
+	
+	print_date_time("statAllFuns(): 6: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
 
 	//---------------------
 	FUNCS_CALLED_TREE trees;
+	
+	timeSart = time_get_tick();
+	print_date_time("statAllFuns(): 7: start ...");
 	ret = createAllFunsCalledTree(vFunctions, trees);
+	print_date_time("statAllFuns(): 7: start ...Done");
+	timeEnd = time_get_tick();
+	printDeltaTime(timeSart, timeEnd);
 
 	return ret;
 }
@@ -4119,32 +4322,93 @@ int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNC
 	if(m_filePathForPdfTex != "")
 	{
 		printf("m_filePathForPdfTex: %s;\n", m_filePathForPdfTex.c_str());
+		int fileCnt = 1;
+		long long writeBytes = 0;
+		long long writeBytesTemp = 0;
 
 		FILE * fp = fopen(m_filePathForPdfTex.c_str(), "w");
 		RETURN_IF_FAILED(fp == NULL, -1);
 
 		std::string strTex = "";
+		int len4 = trees.funcsIndexs.size();
 
 		ret = createPdfTexHeader(strTex);
 		RETURN_IF_FAILED(ret, -1);
 		fwrite(strTex.c_str(), 1, strTex.length(), fp);
 		
-		ret = createPdfTexLogo(strTex);
+		ret = createPdfTexLogo(strTex, len1, taotalFuncs, len4);
 		RETURN_IF_FAILED(ret, -1);
 		fwrite(strTex.c_str(), 1, strTex.length(), fp);
 
-		int len4 = trees.funcsIndexs.size();
+		//----------------------------------------
 		for (int i = 0; i < len4; ++i)
 		{
-//			if(trees.funcsIndexs[i]->funcIndex != 83){ continue; }
-
-			trees.funcsIndexs[i]->printInfo();
+//			trees.funcsIndexs[i]->printInfo();
 			
 			strTex = "";
-			ret = createPdfTexBody(vFunctions, trees.funcsIndexs[i], strTex);
-			RETURN_IF_FAILED(ret, -1);
+			writeBytesTemp = 0;
+			int colMax = 30;
+			int rowMax = m_rowMaxOfSinglePdfPage; // 500;
+			int colBase = 0;
+			int rowBase = 0;
+			std::vector<FUNC_INDEX_POS> vecNodes;
 
-			fwrite(strTex.c_str(), 1, strTex.length(), fp);
+			ret = createPdfTexBody(vFunctions, trees.funcsIndexs[i], strTex, fp, writeBytesTemp, colMax, rowMax, colBase, rowBase, vecNodes);
+			if (ret != 0)
+			{
+				printf("%s(%d): createPdfTexBody() failed! ret=%d;\n", __FUNCTION__, __LINE__, ret);
+				break;
+			}
+
+			writeBytes += writeBytesTemp;
+
+			if(strTex != "")
+			{
+				fwrite(strTex.c_str(), 1, strTex.length(), fp);
+			}
+
+			//-----------超出单张pdf尺寸的部分，再另外生成一页新的pdf------------
+			strTex = "";
+			ret = createPdfTexBodySub(vFunctions, fp, writeBytesTemp, colMax, rowMax, colBase, rowBase, vecNodes);
+			if (ret != 0)
+			{
+				printf("%s(%d): createPdfTexBody() failed! ret=%d;\n", __FUNCTION__, __LINE__, ret);
+				break;
+			}
+
+			//----------单个文件超过500MB的时候，就分成多个文件---------------
+			long fileSize = ftell(fp);
+			printf("i=%d; len4=%d; fileSize = %ld bytes; writeBytesTemp=%lld bytes; writeBytes=%lld bytes;\n", i, len4, fileSize, writeBytesTemp, writeBytes);
+			if(writeBytes > 500 * 1024 * 1024)
+			{
+				strTex = "";
+				ret = createPdfTexTailer(strTex);
+				RETURN_IF_FAILED(ret, -1);
+		
+				fwrite(strTex.c_str(), 1, strTex.length(), fp);
+
+				fclose(fp);
+
+				//------------------
+				writeBytes = 0;
+				char file[600] = {0};
+				sprintf(file, "%s.%d.tex", m_filePathForPdfTex.c_str(), fileCnt++);
+
+				printf("file: %s;\n", file);
+
+				fp = fopen(file, "w");
+				RETURN_IF_FAILED(fp == NULL, -1);
+
+				strTex = "";
+
+				ret = createPdfTexHeader(strTex);
+				RETURN_IF_FAILED(ret, -1);
+				fwrite(strTex.c_str(), 1, strTex.length(), fp);
+		
+				ret = createPdfTexLogo(strTex, len1, taotalFuncs, len4);
+				RETURN_IF_FAILED(ret, -1);
+				fwrite(strTex.c_str(), 1, strTex.length(), fp);
+			}
 		}
 		
 		strTex = "";
@@ -4316,7 +4580,7 @@ int CFuncRoute::createPdfTexHeader(std::string &strTexHeader)
 }
 
 
-int CFuncRoute::createPdfTexLogo(std::string &strTexlogo)
+int CFuncRoute::createPdfTexLogo(std::string &strTexlogo, int totalFiles, int totalFuncs, int totalFuncsRefZero)
 {
 	int ret = 0;
 	
@@ -4329,18 +4593,26 @@ int CFuncRoute::createPdfTexLogo(std::string &strTexlogo)
 
 	//-----------生成tex文件logo----------------------
 	char strlogo[1024] = {0};
+
+	std::string dirSrc = m_srcCodesFilePath;
+	std::string dirDst = "";
+
+	ret = replaceTexEscapeCharacter(dirSrc, dirDst);
 	
 	sprintf(strlogo, "\\begin{tikzpicture}\n"
-		"\\node [align=center] {"
-		"FuncRoute version: %s\\\\"
+		"\\node [align=left] {"
+		"File Dirs: %s\\\\"
+		"Total Files: %d\\\\"
+		"Total extract functions: %d\\\\"
+		"Total extract functions which reference is zero : %d\\\\"
+		"--------------------------------------\\\\"
+		"FuncRoute Version: %s\\\\"
 		"Build Date: %s\\\\"
-		"Author: jfu2\\\\"
 		"Email: 386520874@qq.com\\\\"
-		"GitHub addr https://github.com/jfu222/FuncRoute.git\\\\"
-		"Blog addr https://blog.csdn.net/jfu22"
+		"GitHub Addr: https://github.com/jfu222/FuncRoute.git\\\\"
 		"};\n"
 		"\\end{tikzpicture}\n",
-		VERSION_STR3(VERSION_STR), szBuildDate2);
+		dirDst.c_str(), totalFiles, totalFuncs, totalFuncsRefZero, VERSION_STR3(VERSION_STR), szBuildDate2);
 
 	strTexlogo = strlogo;
 
@@ -4348,17 +4620,41 @@ int CFuncRoute::createPdfTexLogo(std::string &strTexlogo)
 }
 
 
-int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody)
+int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody, FILE *fp, long long &writeBytes, 
+	int colMax, int rowMax, int colBase, int rowBase, std::vector<FUNC_INDEX_POS> &vecNodes)
 {
 	int ret = 0;
+	size_t writeSize = 0;
+	writeBytes = 0;
 	
+	//----------------------------------------
+	char strBegin[] = "\\begin{tikzpicture}["
+		"grow via three points={one child at (0.5,-0.7) and two children at (0.5,-0.7) and (0.5,-1.4)}, "
+		"edge from parent path={(\\tikzparentnode.south) |- (\\tikzchildnode.west)}"
+		"]\n";
+
+	//----------------------------------------
+	if (fp)
+	{
+		writeSize = fwrite(strBegin, strlen(strBegin), 1, fp);
+		RETURN_IF_FAILED(writeSize != 1, -1);
+		writeBytes += strlen(strBegin);
+	}
+
 	//-----------生成tex文件身体----------------------
 	//采用多叉树的前序遍历，即先遍历父节点，再遍历所有子节点
 	std::string texStr = "";
 	std::string spaceStr = "";
 	char strBody[1024] = { 0 };
 	int flag = 0;
-	int itemCnt = 0;
+	int rowsCnt = 1; //pdf行数
+	bool isReachPdfMaxSize = false;
+	
+	_FUNC_INDEX_ stFuncIndex;
+	_FUNC_INDEX_ stFuncIndex2;
+
+	memset(&stFuncIndex, 0, sizeof(stFuncIndex));
+	memset(&stFuncIndex2, 0, sizeof(stFuncIndex2));
 
 	struct TEMP_NODE
 	{
@@ -4376,118 +4672,61 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 	TEMP_NODE tempNode;
 	memset(&tempNode, 0, sizeof(TEMP_NODE));
 
-	tempNode.node = rootNode;
-	tempNode.siblingsCnt = 1;
-	tempNode.siblingsIndex = 0;
-	tempNode.descendantsCnt = 0;
-	tempNode.depth = 0;
+	if (colBase != 0 || rowBase != 0) //说明是某张pdf超出尺寸的部分
+	{
+		stFuncIndex2.childrenIndexs.push_back(rootNode);
 
-	stack.push(tempNode);
+		tempNode.node = &stFuncIndex2;
+		tempNode.siblingsCnt = 1;
+		tempNode.siblingsIndex = 0;
+		tempNode.descendantsCnt = 0;
+		tempNode.depth = 0;
+
+		stack.push(tempNode);
+	}
+	else
+	{
+		tempNode.node = rootNode;
+		tempNode.siblingsCnt = 1;
+		tempNode.siblingsIndex = 0;
+		tempNode.descendantsCnt = 0;
+		tempNode.depth = 0;
+
+		stack.push(tempNode);
+	}
+
+#define CHECK_WRITE_BYTES_MAX(bytes) \
+	if (bytes > 500 * 1024 * 1024) \
+	{ \
+		printf("%s: Error(%d): Func nodes are too many, that writeBytes(%d) more than 500 MB.\n", __FUNCTION__, __LINE__, bytes); \
+		ret = -1; \
+		return ret; \
+	} \
 
 	while (stack.empty() == false)
 	{
+		CHECK_WRITE_BYTES_MAX(writeBytes);
+
 		TEMP_NODE tempNode1 = stack.top();
 		_FUNC_INDEX_ *node = tempNode1.node;
 
 		stack.pop();
 
-		//----------------------------
-		std::string functionName = vFunctions[node->index1].funcs[node->index2].functionName.str;
+		//---------判断是否是递归函数--------------
+		bool bRet = false;
+		std::string strChain = "";
+		std::string functionName = "";
 
-		size_t pos = functionName.rfind("::");
-		if (pos == std::string::npos)
+		bRet = node->isRecursiveFunction(node->funcIndex, strChain);
+
+		if (bRet == true)
 		{
-			std::string className = vFunctions[node->index1].funcs[node->index2].className;
-			std::string classNameAlias = vFunctions[node->index1].funcs[node->index2].classNameAlias;
-			std::string structName = vFunctions[node->index1].funcs[node->index2].structName;
-			if (className != "")
-			{
-				functionName = className + "::" + functionName;
-			}
-			else if (classNameAlias != "")
-			{
-				functionName = classNameAlias + "::" + functionName;
-			}
-			else if (structName != "")
-			{
-				functionName = structName + "::" + functionName;
-			}
+			hashRecursiveCnt[node->funcIndex]++;
 		}
 
-		//-------加上文件名--------------
-		std::string filename = vFunctions[node->index1].fllename;
-		pos = filename.rfind("/");
-
-		if (pos == std::string::npos)
-		{
-			pos = filename.rfind("\\");
-		}
-
-		if (pos != std::string::npos)
-		{
-			std::string dir = filename.substr(0, pos);
-			
-			pos = dir.rfind("/");
-			if (pos == std::string::npos)
-			{
-				pos = dir.rfind("\\");
-			}
-
-			if (pos != std::string::npos)
-			{
-				filename = filename.substr(pos + 1);
-			}
-		}
-
-		functionName += "(" + filename + ":" + std::to_string(vFunctions[node->index1].funcs[node->index2].functionName.lineNumberOfStart) + ")";
-
-		//--------------将functionName中的"_"替换为"\\_"，原因是pdflatex会将"_"识别为数学标识符-----------------------
-		//latex的保留字符：'#','$','%','^','&','_','{','}','~','\'
-
-		int strLen = functionName.length();
-		char * strTmp = (char *)malloc(strLen * 2 + 1);
-		char * p = strTmp;
-		for (int i = 0; i < strLen; ++i)
-		{
-			if (functionName[i] == '#' || functionName[i] == '$' 
-				|| functionName[i] == '%' //|| functionName[i] == '~' 
-				|| functionName[i] == '&' || functionName[i] == '_' 
-				|| functionName[i] == '{' || functionName[i] == '}' 
-				)
-			{
-				*p = '\\';
-				p++;
-			}else if(functionName[i] == '\\')
-			{
-				*p = '/';
-				p++;
-				continue;
-			}else if(functionName[i] == '^' || functionName[i] == '~')
-			{
-				*p = '\\'; p++;
-				*p = functionName[i]; p++;
-				*p = '{'; p++;
-				*p = '}'; p++;
-				continue;
-			}else if(functionName[i] == '>')
-			{
-				char str[] = "\\textgreater";
-				memcpy(p, str, strlen(str));
-				p += strlen(str);
-				continue;
-			}else if(functionName[i] == '<')
-			{
-				char str[] = "\\textless";
-				memcpy(p, str, strlen(str));
-				p += strlen(str);
-				continue;
-			}
-			*p = functionName[i];
-			p++;
-		}
-		*p = '\0';
-		functionName = strTmp;
-		if (strTmp){ free(strTmp); strTmp = NULL; }
+		int colNum = colBase + tempNode1.depth + 1;
+		int rowNum = rowBase + rowsCnt;
+		ret = getTexFuncName(vFunctions, node, bRet, colNum, rowNum, functionName);
 
 		//---------------------
 		spaceStr = "";
@@ -4496,28 +4735,50 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 			spaceStr += "    ";
 		}
 
+		if (tempNode1.depth > 20) //函数调用堆栈深度超过20层了
+		{
+			printf("Warn: tempNode1.depth=%d; {[%d] %s}\n", tempNode1.depth, node->funcIndex, functionName.c_str());
+		}
+
 		if (flag == 0)
 		{
-			sprintf(strBody, "\\node {[%d] %s}\n", node->funcIndex, functionName.c_str()); //_snprintf_s()
-			texStr = strBody;
+			sprintf(strBody, "\\node {%s}\n", functionName.c_str()); //_snprintf_s()
+			if(fp)
+			{
+				writeBytes += strlen(strBody);
+				CHECK_WRITE_BYTES_MAX(writeBytes);
+				writeSize = fwrite(strBody, strlen(strBody), 1, fp);
+				RETURN_IF_FAILED(writeSize != 1, -1);
+			}else
+			{
+				texStr = strBody;
+			}
 
 			flag = 1;
 		}
 		else
 		{
-			sprintf(strBody, "child { node {[%d] %s} \n", node->funcIndex, functionName.c_str());
-			texStr += spaceStr + strBody;
-			itemCnt++;
-		}
-
-		bool bRet = node->isRecursiveFunction(node->funcIndex);
-		if (bRet == true)
-		{
-			hashRecursiveCnt[node->funcIndex]++;
-			if (hashRecursiveCnt[node->funcIndex] >= 3) //递归函数被多次调用，则将计数再次清零
+			sprintf(strBody, "child { node {%s} \n", functionName.c_str());
+			if(fp)
 			{
-				hashRecursiveCnt[node->funcIndex] = 1;
+				writeBytes += spaceStr.length();
+				CHECK_WRITE_BYTES_MAX(writeBytes);
+				writeSize = fwrite(spaceStr.c_str(), spaceStr.length(), 1, fp);
+				RETURN_IF_FAILED(writeSize != 1, -1);
+				writeBytes += strlen(strBody);
+				CHECK_WRITE_BYTES_MAX(writeBytes);
+				writeSize = fwrite(strBody, strlen(strBody), 1, fp);
+				RETURN_IF_FAILED(writeSize != 1, -1);
+			}else
+			{
+				texStr += spaceStr + strBody;
 			}
+		}
+		rowsCnt++;
+
+		if (rowsCnt + stack.size() * 2 >= rowMax) //多叉数深度过深，超过pdflatex的画图极限了
+		{
+			isReachPdfMaxSize = true;
 		}
 
 		//---------------------
@@ -4529,8 +4790,22 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 			{
 				break;
 			}
-
-			texStr += spaceStr + "    }\n";
+			
+			if(fp)
+			{
+				writeBytes += spaceStr.length();
+				CHECK_WRITE_BYTES_MAX(writeBytes);
+				writeSize = fwrite(spaceStr.c_str(), spaceStr.length(), 1, fp);
+				RETURN_IF_FAILED(writeSize != 1, -1);
+				char strTemp[] = "    }\n";
+				writeBytes += strlen(strTemp);
+				CHECK_WRITE_BYTES_MAX(writeBytes);
+				writeSize = fwrite(strTemp, strlen(strTemp), 1, fp);
+				RETURN_IF_FAILED(writeSize != 1, -1);
+			}else
+			{
+				texStr += spaceStr + "    }\n";
+			}
 
 			if (tempNode1.siblingsIndex == tempNode1.siblingsCnt - 1) //说明是兄弟姐妹节点的最后一个节点
 			{
@@ -4538,6 +4813,8 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 
 				while (!stackTempNode.empty())
 				{
+					CHECK_WRITE_BYTES_MAX(writeBytes);
+
 					TEMP_NODE temp11 = stackTempNode.top(); //len1==0说明tempNode1.node是叶子节点，stackTempNode.top()是其父节点
 					stackTempNode.pop();
 
@@ -4550,11 +4827,39 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 
 					if (temp22.siblingsIndex == temp22.siblingsCnt - 1) //说明是兄弟姐妹节点的最后一个节点
 					{
-						texStr += spaceStr + "}\n";
+						if(fp)
+						{
+							writeBytes += spaceStr.length();
+							CHECK_WRITE_BYTES_MAX(writeBytes);
+							writeSize = fwrite(spaceStr.c_str(), spaceStr.length(), 1, fp);
+							RETURN_IF_FAILED(writeSize != 1, -1);
+							char strTemp[] = "}\n";
+							writeBytes += strlen(strTemp);
+							CHECK_WRITE_BYTES_MAX(writeBytes);
+							writeSize = fwrite(strTemp, strlen(strTemp), 1, fp);
+							RETURN_IF_FAILED(writeSize != 1, -1);
+						}else
+						{
+							texStr += spaceStr + "}\n";
+						}
 
 						for (int i = 0; i < temp11.descendantsCnt; ++i)
 						{
-							texStr += spaceStr + "child [missing] {}\n";
+							if(fp)
+							{
+								writeBytes += spaceStr.length();
+								CHECK_WRITE_BYTES_MAX(writeBytes);
+								writeSize = fwrite(spaceStr.c_str(), spaceStr.length(), 1, fp);
+								RETURN_IF_FAILED(writeSize != 1, -1);
+								char strTemp[] = "child [missing] {}\n";
+								writeBytes += strlen(strTemp);
+								CHECK_WRITE_BYTES_MAX(writeBytes);
+								writeSize = fwrite(strTemp, strlen(strTemp), 1, fp);
+								RETURN_IF_FAILED(writeSize != 1, -1);
+							}else
+							{
+								texStr += spaceStr + "child [missing] {}\n";
+							}
 						}
 						temp22 = temp11;
 					}
@@ -4580,13 +4885,33 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 		}
 		else
 		{
-			if (bRet == true && hashRecursiveCnt[node->funcIndex] >= 2)
-			{
-				continue;
-			}
-
 			//-------------------------
 			stackTempNode.push(tempNode1);
+
+			//-------------------------
+			if (isReachPdfMaxSize == true) //多叉数深度过深，超过pdflatex的画图极限了
+			{
+				memset(&tempNode, 0, sizeof(TEMP_NODE));
+
+				tempNode.node = &stFuncIndex;
+				tempNode.siblingsCnt = 1;
+				tempNode.siblingsIndex = 0;
+				tempNode.descendantsCnt = 0;
+				tempNode.depth = tempNode1.depth + 1;
+
+				stack.push(tempNode);
+
+				//---------------------
+				FUNC_INDEX_POS funcPos;
+				memset(&funcPos, 0, sizeof(FUNC_INDEX_POS));
+				funcPos.node = node;
+				funcPos.colBase = colNum;
+				funcPos.rowBase = rowNum;
+
+				vecNodes.push_back(funcPos);
+
+				continue;
+			}
 
 			//-------------------------
 			for (int i = len1 - 1; i >= 0; --i)
@@ -4604,17 +4929,80 @@ int CFuncRoute::createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX
 		}
 	}
 
-	texStr += ";\n";
+	//-----------------
+#undef CHECK_WRITE_BYTES_MAX
 	
-	//----------------------------------------
-	char strBegin[] = "\\begin{tikzpicture}["
-		"grow via three points={one child at (0.5,-0.7) and two children at (0.5,-0.7) and (0.5,-1.4)}, "
-		"edge from parent path={(\\tikzparentnode.south) |- (\\tikzchildnode.west)}"
-		"]\n";
-		
-	char strEnd[] = "\\end{tikzpicture}\n\n";
+	//----------------
+	if (fp)
+	{
+		char strTemp[] = ";\n";
+		writeSize = fwrite(strTemp, strlen(strTemp), 1, fp);
+		RETURN_IF_FAILED(writeSize != 1, -1);
+		writeBytes += strlen(strBegin);
+	} else
+	{
+		texStr += ";\n";
+	}
 
-	strTexBody = strBegin + texStr + strEnd;
+	//----------------------------------------
+	char strEnd[] = "\\end{tikzpicture}\n\n";
+	
+	if (fp)
+	{
+		writeSize = fwrite(strEnd, strlen(strEnd), 1, fp);
+		RETURN_IF_FAILED(writeSize != 1, -1);
+		writeBytes += strlen(strBegin);
+	}else
+	{
+		strTexBody = strBegin + texStr + strEnd;
+	}
+
+	return ret;
+}
+
+
+int CFuncRoute::createPdfTexBodySub(std::vector<FUNCTIONS> &vFunctions, FILE *fp, long long &writeBytes, int colMax, int rowMax, int colBase, int rowBase, std::vector<FUNC_INDEX_POS> &vecNodes)
+{
+	int ret = 0;
+	long long writeBytesTemp = 0;
+	std::string strTex = "";
+
+	//-----------超出单张pdf尺寸的部分，再另外生成一页新的pdf------------
+	int len5 = vecNodes.size();
+	for (int j = 0; j < len5; ++j)
+	{
+		std::vector<FUNC_INDEX_POS> vecNodes2;
+		strTex = "";
+		ret = createPdfTexBody(vFunctions, vecNodes[j].node, strTex, fp, writeBytesTemp, colMax, rowMax, vecNodes[j].colBase, vecNodes[j].rowBase, vecNodes2);
+		if (ret != 0)
+		{
+			printf("%s: createPdfTexBody() failed! ret=%d;\n", __FUNCTION__, ret);
+			break;
+		}
+
+		long fileSize = ftell(fp);
+		printf("j=%d; len5=%d; fileSize = %ld bytes; writeBytesTemp=%lld bytes; writeBytes=%lld bytes;\n", j, len5, fileSize, writeBytesTemp, writeBytes);
+
+		//--------------------------------------
+		int len6 = vecNodes2.size();
+		for (int k = 0; k < len6; ++k) //最多嵌套3层，不能再多了
+		{
+			std::vector<FUNC_INDEX_POS> vecNodes3;
+			strTex = "";
+			ret = createPdfTexBodySub(vFunctions, fp, writeBytesTemp, colMax, rowMax, vecNodes2[k].colBase, vecNodes2[k].rowBase, vecNodes3);
+			if (ret != 0)
+			{
+				printf("%s: createPdfTexBody() failed! ret=%d;\n", __FUNCTION__, ret);
+				break;
+			}
+
+			if (vecNodes3.size() > 0)
+			{
+				printf("%s: Error: createPdfTexBody(): i=%d; k=%d; len6=%d; vecNodes3.size()=%d > 0; ret=%d;\n", __FUNCTION__, j, k, len6, vecNodes3.size(), ret);
+				break;
+			}
+		}
+	}
 
 	return ret;
 }
@@ -4628,6 +5016,145 @@ int CFuncRoute::createPdfTexTailer(std::string &strTexTailer)
 	char strTailer[] = "\\end{document}\n";
 
 	strTexTailer = strTailer;
+
+	return ret;
+}
+
+
+int CFuncRoute::getTexFuncName(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ *node, bool isRecursiveFunction, int cloNum, int rowNum, std::string &strFuncName)
+{
+	int ret = 0;
+
+	if (node == NULL || node->funcIndex == 0)
+	{
+		strFuncName = "......[" + std::to_string(cloNum) + "," + std::to_string(rowNum) + "]";
+		return 0;
+	}
+
+	//----------------------------
+	std::string functionName = vFunctions[node->index1].funcs[node->index2].functionName.str;
+
+	size_t pos = functionName.rfind("::");
+	if (pos == std::string::npos)
+	{
+		std::string className = vFunctions[node->index1].funcs[node->index2].className;
+		std::string classNameAlias = vFunctions[node->index1].funcs[node->index2].classNameAlias;
+		std::string structName = vFunctions[node->index1].funcs[node->index2].structName;
+		if (className != "")
+		{
+			functionName = className + "::" + functionName;
+		}
+		else if (classNameAlias != "")
+		{
+			functionName = classNameAlias + "::" + functionName;
+		}
+		else if (structName != "")
+		{
+			functionName = structName + "::" + functionName;
+		}
+	}
+
+	//-------加上文件名--------------
+	std::string filename = vFunctions[node->index1].fllename;
+	pos = filename.rfind("/");
+
+	if (pos == std::string::npos)
+	{
+		pos = filename.rfind("\\");
+	}
+
+	if (pos != std::string::npos)
+	{
+		std::string dir = filename.substr(0, pos);
+
+		pos = dir.rfind("/");
+		if (pos == std::string::npos)
+		{
+			pos = dir.rfind("\\");
+		}
+
+		if (pos != std::string::npos)
+		{
+			filename = filename.substr(pos + 1);
+		}
+	}
+
+	//---------判断是否是递归函数--------------
+	functionName += "(" + filename + ":" + std::to_string(vFunctions[node->index1].funcs[node->index2].functionName.lineNumberOfStart) + ")";
+
+	if (isRecursiveFunction == true)
+	{
+		functionName += "[recursive]";
+	}
+
+	functionName = "[" + std::to_string(node->funcIndex) + "] " + functionName + "[" + std::to_string(cloNum) + "," + std::to_string(rowNum) + "]";
+
+	//--------------将functionName中的"_"替换为"\\_"，原因是pdflatex会将"_"识别为数学标识符-----------------------
+	//latex的保留字符：'#','$','%','^','&','_','{','}','~','\'
+
+	ret = replaceTexEscapeCharacter(functionName, strFuncName);
+
+	return ret;
+}
+
+
+int CFuncRoute::replaceTexEscapeCharacter(std::string strSrc, std::string &strDst)
+{
+	int ret = 0;
+
+	//--------------将strSrc中的"_"替换为"\\_"，原因是pdflatex会将"_"识别为数学标识符-----------------------
+	//latex的保留字符：'#','$','%','^','&','_','{','}','~','\'
+
+	int strLen = strSrc.length();
+	char * strTmp = (char *)malloc(strLen * 2 + 1);
+	char * p = strTmp;
+	for (int i = 0; i < strLen; ++i)
+	{
+		if (strSrc[i] == '#' || strSrc[i] == '$'
+			|| strSrc[i] == '%' //|| strSrc[i] == '~' 
+			|| strSrc[i] == '&' || strSrc[i] == '_'
+			|| strSrc[i] == '{' || strSrc[i] == '}'
+			)
+		{
+			*p = '\\';
+			p++;
+		}
+		else if (strSrc[i] == '\\')
+		{
+			*p = '/';
+			p++;
+			continue;
+		}
+		else if (strSrc[i] == '^' || strSrc[i] == '~')
+		{
+			*p = '\\'; p++;
+			*p = strSrc[i]; p++;
+			*p = '{'; p++;
+			*p = '}'; p++;
+			continue;
+		}
+		else if (strSrc[i] == '>')
+		{
+			char str[] = "\\textgreater";
+			memcpy(p, str, strlen(str));
+			p += strlen(str);
+			continue;
+		}
+		else if (strSrc[i] == '<')
+		{
+			char str[] = "\\textless";
+			memcpy(p, str, strlen(str));
+			p += strlen(str);
+			continue;
+		}
+		*p = strSrc[i];
+		p++;
+	}
+	*p = '\0';
+
+	strDst = strTmp;
+
+	if (strTmp){ free(strTmp); strTmp = NULL; }
 
 	return ret;
 }
@@ -4667,6 +5194,22 @@ int CFuncRoute::getBuildDate2(char *szBuildDate)
 	month = (strstr(month_names, s_month)-month_names)/3 + 1;
 	
 	sprintf(szBuildDate, "%04d-%02d-%02d %s", year, month, day, __TIME__);
+
+	return 0;
+}
+
+
+int CFuncRoute::printDeltaTime(long long timeStart, long long timeEnd)
+{
+	static long long freq = time_get_frequency();
+
+	long long total_ms = 1000 * (timeEnd - timeStart) / freq;
+	long total_seconnds = total_ms / 1000;
+	long total_mins = total_seconnds / 60;
+	long total_hours = total_mins / 60;
+
+	printf("total take time: %lld ms = %02d:%02d:%02d %d ms;\n", 
+		total_ms, total_hours, total_mins % 60, total_seconnds % 60, total_ms % 1000);
 
 	return 0;
 }

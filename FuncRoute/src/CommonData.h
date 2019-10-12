@@ -269,11 +269,20 @@ public:
 	_FUNC_INDEX_();
 	~_FUNC_INDEX_();
 
-	bool isRecursiveFunction(int funcIndex); //是否是递归函数
+	bool isRecursiveFunction(int funcIndex, std::string &strChain); //是否是递归函数，包含：A->A，以及 A->B->A
+	bool isRecursiveFunctionExplicitCalled(int funcIndex); //是否是显式递归函数，即A->A，不是 A->B->A
 	int freeMem();
 	int printInfo();
 	int printInfoFuncRoute(std::vector<_FUNC_INDEX_ *> &funcs);
 }FUNC_INDEX;
+
+
+typedef struct _FUNC_INDEX_POS_
+{
+	FUNC_INDEX * node;
+	int colBase;
+	int rowBase;
+}FUNC_INDEX_POS;
 
 
 typedef struct _FUNCS_CALLED_TREE_

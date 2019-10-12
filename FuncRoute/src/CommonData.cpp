@@ -19,7 +19,7 @@ _FUNC_INDEX_::~_FUNC_INDEX_()
 }
 
 
-bool _FUNC_INDEX_::isRecursiveFunction(int funcIndex) //是否是递归函数
+bool _FUNC_INDEX_::isRecursiveFunction(int funcIndex, std::string &strChain) //是否是递归函数
 {
 	std::vector<_FUNC_INDEX_ *> stack;
 	std::vector<int> stackIndexes;
@@ -38,10 +38,13 @@ bool _FUNC_INDEX_::isRecursiveFunction(int funcIndex) //是否是递归函数
 			return false;
 		}
 
+		strChain += std::to_string(node->funcIndex) + "-";
+
 		for (int i = 0; i < len1; ++i)
 		{
 			if ((node != this && node->funcIndex == funcIndex) || node->parentIndexs[i]->funcIndex == funcIndex)
 			{
+				strChain += std::to_string(funcIndex);
 				return true;
 			}
 
@@ -61,6 +64,22 @@ bool _FUNC_INDEX_::isRecursiveFunction(int funcIndex) //是否是递归函数
 				stackIndexes.push_back(node->parentIndexs[i]->funcIndex);
 				stack.push_back(node->parentIndexs[i]);
 			}
+		}
+	}
+
+	return false;
+}
+
+
+bool _FUNC_INDEX_::isRecursiveFunctionExplicitCalled(int funcIndex) //是否是显式递归函数，即A->A，不是 A->B->A
+{
+	int len1 = this->childrenIndexs.size();
+
+	for (int i = 0; i < len1; ++i)
+	{
+		if (this->childrenIndexs[i]->funcIndex == funcIndex)
+		{
+			return true;
 		}
 	}
 
@@ -192,7 +211,8 @@ int _FUNC_INDEX_::printInfo()
 			}
 		}
 
-		bool bRet = node->isRecursiveFunction(node->funcIndex);
+		std::string strChain = "";
+		bool bRet = node->isRecursiveFunction(node->funcIndex, strChain);
 		if (bRet == true)
 		{
 			hashRecursiveCnt[node->funcIndex]++;
@@ -224,8 +244,9 @@ int _FUNC_INDEX_::printInfoFuncRoute(std::vector<_FUNC_INDEX_ *> &funcs)
 
 	int len1 = this->childrenIndexs.size();
 	int len2 = funcs.size();
+	std::string strChain = "";
 
-	bool bRet = this->isRecursiveFunction(this->funcIndex);
+	bool bRet = this->isRecursiveFunction(this->funcIndex, strChain);
 
 	if (len1 == 0 || bRet == true)
 	{

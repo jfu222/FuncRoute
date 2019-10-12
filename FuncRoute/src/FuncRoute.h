@@ -16,6 +16,7 @@ public:
 	std::string m_srcCodesFilePath; //C/C++源代码文件路径
 	std::vector<std::string> m_fileSuffixes; //C/C++源代码文件后缀名（忽略大小写）数组，例如 [".h", ".hpp", ".c", ".cpp", ".cc", "*"]
 	std::string m_filePathForPdfTex; //用于生成pdf的tex文件，生成命令为“pdflatex ./out_FuncRoute.tex”，会在当前目录生成./out_FuncRoute.pdf文件
+	int m_rowMaxOfSinglePdfPage; //单张pdf最多有多少行，用于限制单张pdf页的大小，默认为500行
 
 public:
 	CFuncRoute();
@@ -31,7 +32,8 @@ public:
 	int replaceAllCodeCommentsBySpace(unsigned char *buffer, int bufferSize); //将所有用"//..."或"/*...*/"注释掉的代码用空格' '代替
 	int findCurLineStartAndEndPos(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos);
 	int isBetweenInDoubleQuotes(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos); //当前字符是否处于一对双引号之间
-	int replaceAllStrBySpace(unsigned char *buffer, int bufferSize); //将所有用双引号""的代码用空格' '代替
+	int isBetweenInSingleQuotes(unsigned char *buffer, int bufferSize, unsigned char *curPos, unsigned char *&startPos, unsigned char *&endPos); //当前字符是否处于一对单引号之间
+	int replaceAllStrBySpace(unsigned char *buffer, int bufferSize); //将所有用双引号""的代码用反单引号'`'代替
 	int replaceAllMacroDefineStrBySpace(unsigned char *buffer, int bufferSize); //将所有#define宏定义用空格' '代替
 	int findStr(unsigned char *buffer, int bufferSize, const char *str, int &pos); //在内存中，查找指定的字符串
 	int findAllMacros(std::vector<std::string> files, std::vector<MACRO> &macros); //从所有代码源文件中，找到所有的宏定义
@@ -61,6 +63,7 @@ public:
 	int findQueryStrForwardStop(unsigned char *buffer, int bufferSize, unsigned char *leftPos, char *queryStr, char *stopChar, unsigned char *&rightPos); //前向查找指定字符串，遇到停止符则返回失败
 	int findVarDeclareForward(unsigned char *buffer, int bufferSize, std::string queryStr, std::string &varDeclareType); //前向查找变量声明的类型
 	int findVarDeclareBack(unsigned char *buffer, int bufferSize, std::string queryStr, std::string &varDeclareType); //反向查找变量声明的类型
+	bool isValidVarName(unsigned char *buffer, int bufferSize); //是否是一个有效的变量命名，C++ 函数名和变量命名规则，数字 + 字母 + 下划线
 	bool isValidVarChar(char ch); //是否是一个有效的变量命名，C++ 函数名和变量命名规则，数字 + 字母 + 下划线
 	bool isWhiteSpace(char ch); //是否是一个空白字符，' ', '\t', '\r', '\n'
 	int replaceTwoMoreWhiteSpaceByOneSpace(unsigned char *buffer, int bufferSize); //将多个连续的空白字符用一个空格代替
@@ -81,12 +84,17 @@ public:
 	int printInfo(std::vector<FUNCTIONS> &vFunctions);
 
 	int createPdfTexHeader(std::string &strTexHeader); //生成 test.tex头部 ，可转换成 test.pdf
-	int createPdfTexLogo(std::string &strTexlogo); //生成 test.tex logo ，可转换成 test.pdf
-	int createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ * rootNode, std::string &strTexBody); //生成 test.tex身体，转换成 test.pdf
+	int createPdfTexLogo(std::string &strTexlogo, int totalFiles, int totalFuncs, int totalFuncsRefZero); //生成 test.tex logo ，可转换成 test.pdf
+	int createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ *rootNode, std::string &strTexBody, FILE *fp, long long &writeBytes, 
+		int colMax, int rowMax, int colBase, int rowBase, std::vector<FUNC_INDEX_POS> &vecNodes); //生成 test.tex身体，转换成 test.pdf
+	int createPdfTexBodySub(std::vector<FUNCTIONS> &vFunctions, FILE *fp, long long &writeBytes, int colMax, int rowMax, int colBase, int rowBase, std::vector<FUNC_INDEX_POS> &vecNodes); //生成 test.tex身体，转换成 test.pdf
 	int createPdfTexTailer(std::string &strTexTailer); //生成 test.tex尾部，可转换成 test.pdf
+	int getTexFuncName(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ *node, bool isRecursiveFunction, int cloNum, int rowNum, std::string &strFuncName);
+	int replaceTexEscapeCharacter(std::string strSrc, std::string &strDst); //替换tex转义字符
 	
 	int getBuildDate1(char *szBuildDate);
 	int getBuildDate2(char *szBuildDate);
+	int printDeltaTime(long long timeStart, long long timeEnd);
 };
 
 #endif //__FUNC_ROUTE_H__
