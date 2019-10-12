@@ -4336,7 +4336,7 @@ int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNC
 		RETURN_IF_FAILED(ret, -1);
 		fwrite(strTex.c_str(), 1, strTex.length(), fp);
 		
-		ret = createPdfTexLogo(strTex, taotalFuncs, len4);
+		ret = createPdfTexLogo(strTex, len1, taotalFuncs, len4);
 		RETURN_IF_FAILED(ret, -1);
 		fwrite(strTex.c_str(), 1, strTex.length(), fp);
 
@@ -4405,7 +4405,7 @@ int CFuncRoute::createAllFunsCalledTree(std::vector<FUNCTIONS> &vFunctions, FUNC
 				RETURN_IF_FAILED(ret, -1);
 				fwrite(strTex.c_str(), 1, strTex.length(), fp);
 		
-				ret = createPdfTexLogo(strTex, taotalFuncs, len4);
+				ret = createPdfTexLogo(strTex, len1, taotalFuncs, len4);
 				RETURN_IF_FAILED(ret, -1);
 				fwrite(strTex.c_str(), 1, strTex.length(), fp);
 			}
@@ -4580,7 +4580,7 @@ int CFuncRoute::createPdfTexHeader(std::string &strTexHeader)
 }
 
 
-int CFuncRoute::createPdfTexLogo(std::string &strTexlogo, int totalFuncs, int totalFuncsRefZero)
+int CFuncRoute::createPdfTexLogo(std::string &strTexlogo, int totalFiles, int totalFuncs, int totalFuncsRefZero)
 {
 	int ret = 0;
 	
@@ -4602,6 +4602,7 @@ int CFuncRoute::createPdfTexLogo(std::string &strTexlogo, int totalFuncs, int to
 	sprintf(strlogo, "\\begin{tikzpicture}\n"
 		"\\node [align=left] {"
 		"File Dirs: %s\\\\"
+		"Total Files: %d\\\\"
 		"Total extract functions: %d\\\\"
 		"Total extract functions which reference is zero : %d\\\\"
 		"--------------------------------------\\\\"
@@ -4611,7 +4612,7 @@ int CFuncRoute::createPdfTexLogo(std::string &strTexlogo, int totalFuncs, int to
 		"GitHub Addr: https://github.com/jfu222/FuncRoute.git\\\\"
 		"};\n"
 		"\\end{tikzpicture}\n",
-		dirDst.c_str(), totalFuncs, totalFuncsRefZero, VERSION_STR3(VERSION_STR), szBuildDate2);
+		dirDst.c_str(), totalFiles, totalFuncs, totalFuncsRefZero, VERSION_STR3(VERSION_STR), szBuildDate2);
 
 	strTexlogo = strlogo;
 

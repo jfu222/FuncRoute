@@ -84,7 +84,7 @@ public:
 	int printInfo(std::vector<FUNCTIONS> &vFunctions);
 
 	int createPdfTexHeader(std::string &strTexHeader); //生成 test.tex头部 ，可转换成 test.pdf
-	int createPdfTexLogo(std::string &strTexlogo, int totalFuncs, int totalFuncsRefZero); //生成 test.tex logo ，可转换成 test.pdf
+	int createPdfTexLogo(std::string &strTexlogo, int totalFiles, int totalFuncs, int totalFuncsRefZero); //生成 test.tex logo ，可转换成 test.pdf
 	int createPdfTexBody(std::vector<FUNCTIONS> &vFunctions, _FUNC_INDEX_ *rootNode, std::string &strTexBody, FILE *fp, long long &writeBytes, 
 		int colMax, int rowMax, int colBase, int rowBase, std::vector<FUNC_INDEX_POS> &vecNodes); //生成 test.tex身体，转换成 test.pdf
 	int createPdfTexBodySub(std::vector<FUNCTIONS> &vFunctions, FILE *fp, long long &writeBytes, int colMax, int rowMax, int colBase, int rowBase, std::vector<FUNC_INDEX_POS> &vecNodes); //生成 test.tex身体，转换成 test.pdf
