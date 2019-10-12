@@ -472,7 +472,7 @@ retry0:
 		funcStruct.functionName.lineNumberOfStart = lineNumber;
 
 		ret2 = isValidVarName(funcStruct.functionName.start, funcStruct.functionName.end - funcStruct.functionName.start + 1);
-		if (ret2 == false) //函数名不是由数字字母下划线组成
+		if (ret2 == false && isDestructor == false) //函数名不是由数字字母下划线组成
 		{
 			goto retry4;
 		}
