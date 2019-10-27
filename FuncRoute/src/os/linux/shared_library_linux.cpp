@@ -158,6 +158,40 @@ int get_nested_dir_files(const char *dir_path, std::vector<std::string> &files)
 }
 
 
+int get_file_dirname_and_basename_and_extname(const char *file_name, std::string &dir_name, std::string &base_name, std::string &extension_name)
+{
+	if(file_name == NULL || strlen(file_name) <= 0)
+	{
+		return -1;
+	}
+
+	std::string filename = file_name;
+
+	size_t pos1 = filename.rfind('.');
+	size_t pos2 = filename.rfind('/');
+
+	if(pos1 == std::string::npos)
+	{
+		extension_name = "";
+	}else
+	{
+		extension_name = filename.substr(pos1 + 1);
+	}
+	
+	if(pos2 == std::string::npos)
+	{
+		dir_name = "";
+		base_name = filename;
+	}else
+	{
+		dir_name = filename.substr(0, pos2);
+		base_name = filename.substr(pos2 + 1);
+	}
+
+	return 0;
+}
+
+
 int set_dll_directory(const char *dir_path)
 {
 	return 0;

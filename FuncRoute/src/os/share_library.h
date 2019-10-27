@@ -25,6 +25,7 @@ int get_exe_dir_path(char *dir_path, int size);
 int get_children_dir_name(char *parent_dir_path, std::vector<std::string> &children_dir_name);
 int get_dir_files(const char *dir_path, std::vector<std::string> &files);
 int get_nested_dir_files(const char *dir_path, std::vector<std::string> &files);
+int get_file_dirname_and_basename_and_extname(const char *file_name, std::string &dir_name, std::string &base_name, std::string &extension_name);
 int set_dll_directory(const char *dir_path);
 bool is_file_exist(const char *file_path);
 

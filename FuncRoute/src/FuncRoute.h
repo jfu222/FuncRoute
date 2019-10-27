@@ -17,12 +17,13 @@ public:
 	std::vector<std::string> m_fileSuffixes; //C/C++源代码文件后缀名（忽略大小写）数组，例如 [".h", ".hpp", ".c", ".cpp", ".cc", "*"]
 	std::string m_filePathForPdfTex; //用于生成pdf的tex文件，生成命令为“pdflatex ./out_FuncRoute.tex”，会在当前目录生成./out_FuncRoute.pdf文件
 	int m_rowMaxOfSinglePdfPage; //单张pdf最多有多少行，用于限制单张pdf页的大小，默认为500行
+	std::string m_dirForSaveNewCodeFiles; //用于保存新生成的代码文件
 
 public:
 	CFuncRoute();
 	~CFuncRoute();
 
-	int CFuncRoute::splitDirsBySemicolon(std::string dirs, std::vector<std::string> &vecDirs); //用分号';'分开字符串
+	int splitDirsBySemicolon(std::string dirs, std::vector<std::string> &vecDirs); //用分号';'分开字符串
 	int findAllFunctionsName(std::vector<std::string> dirsInclude, std::vector<std::string> fileDirsExclude, std::vector<std::string> suffixes); //从源代码文件里面，提取出所有函数名
 	int search_C_FuncName(unsigned char *buffer, unsigned int bufferSize, FUNCTIONS &functions); //从内存buffer中，搜索C语言函数名
 	int search_CPP_FuncName(unsigned char *buffer, unsigned int bufferSize, FUNCTIONS &functions); //从内存buffer中，搜索C++语言函数名
@@ -95,6 +96,8 @@ public:
 	int getBuildDate1(char *szBuildDate);
 	int getBuildDate2(char *szBuildDate);
 	int printDeltaTime(long long timeStart, long long timeEnd);
+
+	int saveNewCodeFiles(std::vector<FUNCTIONS> &vFunctions, std::string outDir);
 };
 
 #endif //__FUNC_ROUTE_H__

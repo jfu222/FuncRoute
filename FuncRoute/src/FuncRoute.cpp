@@ -36,6 +36,7 @@ CFuncRoute::CFuncRoute()
 	m_srcCodesFilePath = "";
 	m_filePathForPdfTex = "";
 	m_rowMaxOfSinglePdfPage = 500;
+	m_dirForSaveNewCodeFiles = "";
 }
 
 
@@ -257,6 +258,13 @@ int CFuncRoute::findAllFunctionsName(std::vector<std::string> dirsInclude, std::
 	timeEnd = time_get_tick();
 	printDeltaTime(timeSart, timeEnd);
 	
+	//---------对每个C/C++函数体开始和结尾，加上打印日志，用于追踪函数运行路径--------------
+	if(m_dirForSaveNewCodeFiles != "")
+	{
+		ret = saveNewCodeFiles(allFuncs, m_dirForSaveNewCodeFiles);
+		return ret;
+	}
+
 	//---------分析各个函数之间的调用关系--------------
 	timeSart = time_get_tick();
 	print_date_time("findAllFunctionsName(): 2: start ...");
@@ -379,7 +387,7 @@ retry:
 		lineNumber += statBufferLinesCount(p21, p22 - p21 + 1);
 		
 		funcStruct.functionBody.start = p22;
-		funcStruct.functionBody.fileOffsetOfStart = funcStruct.functionBody.start - p1;
+		funcStruct.functionBody.fileOffsetOfStart = funcStruct.functionBody.start - buffer2;
 		funcStruct.functionBody.lineNumberOfStart = lineNumber;
 
 		ret = findPairCharForward(p22, p3 - p21 + 1, p22, '{', '}', p22);
@@ -389,7 +397,7 @@ retry:
 		}
 
 		funcStruct.functionBody.end = p22;
-		funcStruct.functionBody.fileOffsetOfEnd = funcStruct.functionBody.end - p1;
+		funcStruct.functionBody.fileOffsetOfEnd = funcStruct.functionBody.end - buffer2;
 		lineNumber += statBufferLinesCount(funcStruct.functionBody.start, funcStruct.functionBody.end - funcStruct.functionBody.start + 1);
 		funcStruct.functionBody.lineNumberOfEnd = lineNumber;
 
@@ -425,7 +433,7 @@ retry0:
 		}
 
 		funcStruct.functionParameter.end = p21;
-		funcStruct.functionParameter.fileOffsetOfEnd = funcStruct.functionParameter.end - p1;
+		funcStruct.functionParameter.fileOffsetOfEnd = funcStruct.functionParameter.end - buffer2;
 		funcStruct.functionParameter.lineNumberOfEnd = lineNumber;
 
 		ret = findPairCharBackStop(p1, p21 - p1 + 1, p21, '(', ')', ";#{}", p21);
@@ -435,7 +443,7 @@ retry0:
 		}
 
 		funcStruct.functionParameter.start = p21;
-		funcStruct.functionParameter.fileOffsetOfStart = funcStruct.functionParameter.end - p1;
+		funcStruct.functionParameter.fileOffsetOfStart = funcStruct.functionParameter.end - buffer2;
 
 		lineNumber -= statBufferLinesCount(funcStruct.functionParameter.start, funcStruct.functionParameter.end - funcStruct.functionParameter.start + 1);
 		funcStruct.functionParameter.lineNumberOfStart = lineNumber;
@@ -448,7 +456,7 @@ retry0:
 		RETURN_IF_FAILED(ret, ret);
 
 		funcStruct.functionName.end = p21;
-		funcStruct.functionName.fileOffsetOfEnd = funcStruct.functionName.end - p1;
+		funcStruct.functionName.fileOffsetOfEnd = funcStruct.functionName.end - buffer2;
 		funcStruct.functionName.lineNumberOfEnd = lineNumber;
 
 		ret = findStrBack(p1, p21 - p1 + 1, p21, p21);
@@ -468,7 +476,7 @@ retry0:
 		}
 		
 		funcStruct.functionName.start = p21;
-		funcStruct.functionName.fileOffsetOfStart = funcStruct.functionName.start - p1;
+		funcStruct.functionName.fileOffsetOfStart = funcStruct.functionName.start - buffer2;
 		funcStruct.functionName.lineNumberOfStart = lineNumber;
 
 		ret2 = isValidVarName(funcStruct.functionName.start, funcStruct.functionName.end - funcStruct.functionName.start + 1);
@@ -515,7 +523,7 @@ retry0:
 					RETURN_IF_FAILED(ret, ret);
 
 					funcStruct.functionName.start = p21;
-					funcStruct.functionName.fileOffsetOfStart = funcStruct.functionName.start - p1;
+					funcStruct.functionName.fileOffsetOfStart = funcStruct.functionName.start - buffer2;
 					funcStruct.functionName.lineNumberOfStart = lineNumber;
 
 					len = MIN(p22 - p21 + 1, sizeof(funcStruct.className) - 1);
@@ -570,11 +578,11 @@ retry1:
 			if (ret2 == true) //说明是 const 等关键词
 			{
 				funcStruct.functionTypeQualifier.start = p21;
-				funcStruct.functionTypeQualifier.fileOffsetOfStart = funcStruct.functionTypeQualifier.start - p1;
+				funcStruct.functionTypeQualifier.fileOffsetOfStart = funcStruct.functionTypeQualifier.start - buffer2;
 				funcStruct.functionTypeQualifier.lineNumberOfStart = lineNumber;
 
 				funcStruct.functionTypeQualifier.end = p22;
-				funcStruct.functionTypeQualifier.fileOffsetOfEnd = funcStruct.functionTypeQualifier.end - p1;
+				funcStruct.functionTypeQualifier.fileOffsetOfEnd = funcStruct.functionTypeQualifier.end - buffer2;
 				funcStruct.functionTypeQualifier.lineNumberOfEnd = lineNumber;
 			}
 			else
@@ -606,7 +614,7 @@ retry1:
 		RETURN_IF_FAILED(ret, ret);
 
 		funcStruct.functionReturnValue.end = p21;
-		funcStruct.functionReturnValue.fileOffsetOfEnd = funcStruct.functionReturnValue.end - p1;
+		funcStruct.functionReturnValue.fileOffsetOfEnd = funcStruct.functionReturnValue.end - buffer2;
 		funcStruct.functionReturnValue.lineNumberOfEnd = lineNumber;
 
 		if(*p21 == '*') //函数返回值类型是一个地址指针
@@ -687,7 +695,7 @@ retry1:
 		RETURN_IF_FAILED(ret, ret);
 
 		funcStruct.functionReturnValue.start = p21;
-		funcStruct.functionReturnValue.fileOffsetOfStart = funcStruct.functionReturnValue.start - p1;
+		funcStruct.functionReturnValue.fileOffsetOfStart = funcStruct.functionReturnValue.start - buffer2;
 		funcStruct.functionReturnValue.lineNumberOfStart = lineNumber;
 
 		funcStruct.functionReturnValue.length = funcStruct.functionReturnValue.end - funcStruct.functionReturnValue.start + 1;
@@ -5212,4 +5220,162 @@ int CFuncRoute::printDeltaTime(long long timeStart, long long timeEnd)
 		total_ms, total_hours, total_mins % 60, total_seconnds % 60, total_ms % 1000);
 
 	return 0;
+}
+
+
+int CFuncRoute::saveNewCodeFiles(std::vector<FUNCTIONS> &vFunctions, std::string outDir)
+{
+	int ret = 0;
+	
+	int len1 = vFunctions.size();
+	for (int i = 0; i < len1; ++i)
+	{
+		std::string filename = vFunctions[i].fllename;
+
+		if(filename.length() > 2 && filename[1] == ':') //如果是windows盘符路径，例如： "C:\FuncRoute"
+		{
+			filename = filename.substr(2);
+		}
+
+		std::string outFilename = outDir + "/" + filename; //将 "C:\FuncRoute\FuncRoute\main.cpp" 拷贝到 "[outDir]\FuncRoute\FuncRoute\main.cpp"
+		
+		std::string dir_name = "";
+		std::string base_name = "";
+		std::string extension_name = "";
+
+		ret = get_file_dirname_and_basename_and_extname(outFilename.c_str(), dir_name, base_name, extension_name);
+		RETURN_IF_FAILED(ret != 0, ret);
+
+		//--------------------------
+		ret = create_nested_dir(dir_name.c_str());
+		RETURN_IF_FAILED(ret != 0, ret);
+		
+		//-----------读取整个文件到内存中---------------
+		FILE * fp = fopen(vFunctions[i].fllename, "rb");
+		RETURN_IF_FAILED(fp == NULL, -4);
+
+		fseek(fp, 0, SEEK_END);
+		long file_size = ftell(fp);
+		fseek(fp, 0, SEEK_SET);
+
+		unsigned char *buffer = (unsigned char *)malloc(sizeof(unsigned char) * file_size);
+		RETURN_IF_FAILED(buffer == NULL, -5);
+
+		size_t read_size = fread(buffer, file_size, 1, fp);
+		if (read_size != 1)
+		{
+			printf("%s(%d): Error: read_size=%d != 1\n", __FUNCTION__, __LINE__, read_size);
+			fclose(fp);
+			free(buffer);
+			continue; //有的文件的确是空文件
+		}
+
+		fclose(fp);
+		fp = NULL;
+
+		//----------复制一份-----------------
+		unsigned char *buffer2 = (unsigned char *)malloc(file_size);
+		RETURN_IF_FAILED(buffer2 == NULL, -2);
+
+		memcpy(buffer2, buffer, file_size); //复制一份
+
+		//------先将被注释掉的代码用空格' '代替（行号符'\n'保留）--------
+		ret = replaceAllCodeCommentsBySpace(buffer2, file_size);
+		RETURN_IF_FAILED(ret, -2);
+	
+		//------将所有用双引号""的代码用空格' '代替--------
+		ret = replaceAllStrBySpace(buffer2, file_size);
+		RETURN_IF_FAILED(ret, -2);
+
+		//------将所有#define宏用空格' '代替--------
+		ret = replaceAllMacroDefineStrBySpace(buffer2, file_size);
+		RETURN_IF_FAILED(ret, -3);
+	
+		//--------------------------------
+		printf("%s:(%s)(%d): %d/%d: outFilename=%s;\n", __FILE__, __FUNCTION__, __LINE__, i, len1, outFilename.c_str());
+
+		FILE * fp2 = fopen(outFilename.c_str(), "wb");
+		RETURN_IF_FAILED(fp2 == NULL, -4);
+
+		int flag = 0;
+		size_t writeBytes = 0;
+		int lastPos = 0;
+		char include_stdio[] = "#include <stdio.h>\r\n";
+		char logInfo1[] = "\r\nprintf(\"FuncRoute: %s:(%s)(%d): start ...\\n\", __FILE__, __FUNCTION__, __LINE__);\r\n";
+		char logInfo2[] = "\r\nprintf(\"FuncRoute: %s:(%s)(%d): start ... Done\\n\", __FILE__, __FUNCTION__, __LINE__);\r\n";
+		char keyWord_return[] = "return";
+		int keyWord_return_len = strlen(keyWord_return);
+
+		int len2 = vFunctions[i].funcs.size();
+
+		if(len2 > 0)
+		{
+			writeBytes = fwrite(include_stdio, strlen(include_stdio), 1, fp2);
+		}
+
+		for (int j = 0; j < len2; ++j)
+		{
+			int bodyStartPos = vFunctions[i].funcs[j].functionBody.fileOffsetOfStart;
+			int bodyEndPos = vFunctions[i].funcs[j].functionBody.fileOffsetOfEnd;
+			
+			writeBytes = fwrite(buffer + lastPos, bodyStartPos - lastPos + 1, 1, fp2);
+			writeBytes = fwrite(logInfo1, strlen(logInfo1), 1, fp2);
+
+			//-------------------------------
+			unsigned char *p1 = buffer2 + bodyStartPos + 1;
+			unsigned char *p2 = p1;
+			unsigned char *p3 = buffer2 + bodyEndPos;
+			unsigned char *p21 = p1;
+			unsigned char *p22 = p1;
+
+			while(p2 < p3 - keyWord_return_len)
+			{
+				if(memcmp(p2, "return", 6) == 0 
+					&& p2 - 1 >= p1 && isValidVarChar(*(p2 - 1)) == false
+					&& p2 + keyWord_return_len <= p3 && isValidVarChar(*(p2 + keyWord_return_len)) == false
+					) //在函数体内部每个"return"关键字前面加一行printf日志打印
+				{
+					p22 = p2;
+					while(*(p22 - 1) == ' ' || *(p22 - 1) == '\t')
+					{
+						p22--;
+					}
+					
+					writeBytes = fwrite(buffer + (p21 - buffer2), p22 - p21, 1, fp2);
+					writeBytes = fwrite(logInfo2, strlen(logInfo2), 1, fp2);
+					writeBytes = fwrite(buffer + (p22 - buffer2), p2 - p22, 1, fp2);
+
+					p21 = p2;
+					flag = 1;
+				}
+
+				p2++;
+			}
+			
+			writeBytes = fwrite(buffer + (p21 - buffer2), buffer2 + bodyEndPos - p21, 1, fp2);
+			
+			if(flag == 0)
+			{
+				writeBytes = fwrite(logInfo2, strlen(logInfo2), 1, fp2);
+			}
+
+			lastPos = bodyEndPos;
+		}
+		
+		if(file_size - lastPos > 0)
+		{
+			writeBytes = fwrite(buffer + lastPos, file_size - lastPos, 1, fp2);
+		}
+
+		fclose(fp2);
+		fp2 = NULL;
+
+		free(buffer);
+		buffer = NULL;
+
+		free(buffer2);
+		buffer2 = NULL;
+	}
+
+	return ret;
 }
